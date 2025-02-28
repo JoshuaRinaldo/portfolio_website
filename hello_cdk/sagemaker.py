@@ -1,0 +1,223 @@
+from aws_cdk import aws_iam as iam
+from aws_cdk import aws_sagemaker as sagemaker
+from constructs import Construct
+
+from typing import Any
+
+# The region dict allows us to use the AWS region name to find the
+# correct docker repo
+region_dict = {
+    "af-south-1": "626614931356",
+    "ap-east-1": "871362719292",
+    "ap-northeast-1": "763104351884",
+    "ap-northeast-2": "763104351884",
+    "ap-northeast-3": "364406365360",
+    "ap-south-1": "763104351884",
+    "ap-southeast-1": "763104351884",
+    "ap-southeast-2": "763104351884",
+    "ca-central-1": "763104351884",
+    "cn-north-1": "727897471807",
+    "cn-northwest-1": "727897471807",
+    "eu-central-1": "763104351884",
+    "eu-north-1": "763104351884",
+    "eu-south-1": "692866216735",
+    "eu-west-1": "763104351884",
+    "eu-west-2": "763104351884",
+    "eu-west-3": "763104351884",
+    "me-south-1": "217643126080",
+    "sa-east-1": "763104351884",
+    "us-east-1": "763104351884",
+    "us-east-2": "763104351884",
+    "us-gov-west-1": "442386744353",
+    "us-iso-east-1": "886529160074",
+    "us-west-1": "763104351884",
+    "us-west-2": "763104351884",
+}
+
+
+def get_image_uri(
+        region,
+        transformmers_version,
+        pytorch_version,
+        ubuntu_version,
+        use_gpu,
+    ):
+    repository = f"{region_dict[region]}.dkr.ecr.{region}.amazonaws.com/huggingface-pytorch-inference"
+    tag = f"{pytorch_version}-transformers{transformmers_version}-{'gpu-py36-cu111' if use_gpu == True else 'cpu-py39'}-ubuntu{ubuntu_version}"
+    return f"{repository}:{tag}"
+
+
+class HuggingfaceSagemaker(Construct):
+    def __init__(
+            self,
+            scope: Construct,
+            region: str,
+            construct_id: str,
+            endpoint_name: str,
+            model_task: str = None,
+            serverless_config: dict = None,
+            production_variants: dict[str, Any] = {},
+            model_data_url: str = None,
+            model_name: str = None,
+            use_gpu: bool = False,
+            transformmers_version: str = "4.26",
+            pytorch_version: str = "1.13",
+            ubuntu_version: str = "20.04",
+            ) -> None:
+        
+        super().__init__(scope, construct_id)
+
+        if model_name is None and model_data_url is None:
+            raise ValueError(
+                "One of model_name or model_data_url must be defined when"
+                " creating huggingface endpoints."
+            )
+
+        # Determine image uri and create container definition
+        image_uri = get_image_uri(
+            region,
+            transformmers_version,
+            pytorch_version,
+            ubuntu_version,
+            use_gpu,
+        )
+
+        container_environment = {}
+        if model_task:
+            container_environment["HF_TASK"] = model_task
+        if model_name:
+            container_environment["HF_MODEL_ID"] = model_name
+        container = sagemaker.CfnModel.ContainerDefinitionProperty(
+             environment=container_environment,
+             image=image_uri,
+             model_data_url=model_data_url,
+             )
+
+        # Set endpoint role/permissions, define Sagemaker Model
+        role = iam.Role(
+            self, f"{construct_id}-sm-role", assumed_by=iam.ServicePrincipal("sagemaker.amazonaws.com")
+        )
+        role.add_managed_policy(
+            iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSagemakerFullAccess")
+            )
+        if model_data_url:
+            role.add_to_policy(
+                iam.PolicyStatement(
+                    resources = [
+                        f"arn:aws:s3:::{model_data_url[5:]}"
+                    ],
+                    actions=["s3:GetObject", "s3:ListBucket"]
+                )
+            )
+        
+        model = sagemaker.CfnModel(
+            self,
+            f"model-{endpoint_name}",
+            execution_role_arn=role.role_arn,
+            primary_container=container,
+            model_name=f'model-{endpoint_name}',
+        )
+
+
+        # Creates SageMaker Endpoint configurations
+        endpoint_configuration = sagemaker.CfnEndpointConfig(
+            self,
+            f"endpoint-config-{endpoint_name}",
+            endpoint_config_name=f'config-{endpoint_name}',
+            production_variants=[
+                sagemaker.CfnEndpointConfig.ProductionVariantProperty(
+                    model_name=model.model_name,
+                    variant_name=model.model_name,
+                    **production_variants,
+                    serverless_config=sagemaker.CfnEndpointConfig.ServerlessConfigProperty(**serverless_config) if serverless_config else None,
+                )
+            ],
+        )
+
+        # Creates Real-Time Endpoint
+        endpoint = sagemaker.CfnEndpoint(
+            self,
+            f"endpoint={endpoint_name}",
+            endpoint_name=endpoint_name,
+            endpoint_config_name=endpoint_configuration.endpoint_config_name,
+        )
+
+        # adds depends on for different resources
+        model.node.add_dependency(role)
+        endpoint_configuration.node.add_dependency(model)
+        endpoint.node.add_dependency(endpoint_configuration)
+
+class SagemakerFromImageAndModelData(Construct):
+    def __init__(
+            self,
+            scope: Construct,
+            region: str,
+            account: str,
+            construct_id: str,
+            endpoint_name: str,
+            image_repo_name: str,
+            image_tag: str,
+            model_data_bucket: str = None,
+            serverless_config: dict = None,
+            production_variants: dict[str, Any] = {},
+            container_environment: dict[str, Any] = {},
+            ) -> None:
+        
+        super().__init__(scope, construct_id)
+
+        # Set endpoint role/permissions, define Sagemaker Model
+        role = iam.Role(
+            self, f"{construct_id}-sm-role", assumed_by=iam.ServicePrincipal("sagemaker.amazonaws.com")
+        )
+        role.add_managed_policy(
+            iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSagemakerFullAccess")
+            )
+        if model_data_bucket:
+            role.add_to_policy(
+                iam.PolicyStatement(
+                    resources = [
+                        f"arn:aws:s3:::{model_data_bucket}/*"
+                    ],
+                    actions=["s3:GetObject", "s3:ListBucket"]
+                )
+            )
+        
+        model = sagemaker.CfnModel(
+            self,
+            f"model-{endpoint_name}",
+            execution_role_arn=role.role_arn,
+            model_name=f'model-{endpoint_name}',
+            primary_container=sagemaker.CfnModel.ContainerDefinitionProperty(
+                environment=container_environment,
+                image=f"{account}.dkr.ecr.{region}.amazonaws.com/{image_repo_name}:{image_tag}",
+            ),
+        )
+
+        # Creates SageMaker Endpoint configurations
+        endpoint_configuration = sagemaker.CfnEndpointConfig(
+            self,
+            f"endpoint-config-{endpoint_name}",
+            endpoint_config_name=f'config-{endpoint_name}',
+            production_variants=[
+                sagemaker.CfnEndpointConfig.ProductionVariantProperty(
+                    model_name=model.model_name,
+                    variant_name=model.model_name,
+                    **production_variants,
+                    serverless_config=sagemaker.CfnEndpointConfig.ServerlessConfigProperty(**serverless_config) if serverless_config else None,
+                )
+            ],
+        )
+
+        # Creates Real-Time Endpoint
+        endpoint = sagemaker.CfnEndpoint(
+            self,
+            f"endpoint-{endpoint_name}",
+            endpoint_name=endpoint_name,
+            endpoint_config_name=endpoint_configuration.endpoint_config_name,
+        )
+
+        # adds depends on for different resources
+        model.node.add_dependency(role)
+        endpoint_configuration.node.add_dependency(model)
+        endpoint.node.add_dependency(endpoint_configuration)
+        
