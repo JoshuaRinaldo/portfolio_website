@@ -19,8 +19,7 @@ from constructs import Construct
 from pathlib import Path
 
 
-class HelloCdkStack(Stack):
-
+class StreamlitSite(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
@@ -42,16 +41,21 @@ class HelloCdkStack(Stack):
         )
         
 
-        # Define the Lambda function resource
         counterfactual_lambda_role = iam.Role(self, "My Role",
             assumed_by=iam.ServicePrincipal("lambda.amazonaws.com")
         )
-        counterfactual_lambda = _lambda.Function(self, "MyFunction",
-            runtime=_lambda.Runtime.PYTHON_3_13,
-            handler="unmask_models.handler",
-            code=_lambda.Code.from_asset("lambda_functions/unmask_models/"),
+        counterfactual_lambda = _lambda.DockerImageFunction(
+            scope=self,
+            id="ExampleDockerLambda",
             role=counterfactual_lambda_role,
-            timeout=Duration.minutes(5)
+            timeout=Duration.minutes(5),
+            code=_lambda.DockerImageCode.from_image_asset(
+
+                # Directory relative to where you execute cdk deploy
+                # contains a Dockerfile with build instructions
+                directory="lambda_functions/unmask_models/.",
+                platform=ecrassets.Platform.LINUX_AMD64
+            ),
         )
         counterfactual_lambda_role.add_managed_policy(
             iam.ManagedPolicy.from_aws_managed_policy_name("service-role/AWSLambdaBasicExecutionRole")
@@ -63,8 +67,6 @@ class HelloCdkStack(Stack):
         ))
 
         counterfactual_lambda_name = counterfactual_lambda.function_name
-
-
 
         # Create SageMaker endpoints
         for endpoint_n in sagemaker_endpoints:

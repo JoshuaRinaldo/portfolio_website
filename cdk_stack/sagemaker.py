@@ -37,17 +37,63 @@ region_dict = {
 
 def get_image_uri(
         region,
-        transformmers_version,
+        transformers_version,
         pytorch_version,
         ubuntu_version,
         use_gpu,
     ):
     repository = f"{region_dict[region]}.dkr.ecr.{region}.amazonaws.com/huggingface-pytorch-inference"
-    tag = f"{pytorch_version}-transformers{transformmers_version}-{'gpu-py36-cu111' if use_gpu == True else 'cpu-py39'}-ubuntu{ubuntu_version}"
+    tag = f"{pytorch_version}-transformers{transformers_version}-{'gpu-py36-cu111' if use_gpu == True else 'cpu-py39'}-ubuntu{ubuntu_version}"
     return f"{repository}:{tag}"
 
 
 class HuggingfaceSagemaker(Construct):
+    """
+    Deploys an off-the-shelf huggingface model using the default docker
+    image.
+
+    Args:
+        region (str): The region of the cdk stack.
+
+        construct_id (str): The model's construct id.
+
+        endpoint_name (str): The name that the endpoint will assume
+        once deployed.
+
+        model_task (str): The task of the model.
+
+        undesired_class (str): The name of the undesired class. This
+        tells the function which tokens to mask.
+
+        serverless_config (dict): The config for serverless endpoints,
+        which is only used if the endpoint is serverles.
+
+        production_variants (dict): The production variants of the
+        endpoint.
+
+        model_data_url (str): The location of a huggingface model data
+        file. This is only used if the model is a custom finetuned
+        model.
+
+        model_name (str): The name of the model. The model name is used
+        to pull a huggingface model off the shelf.
+
+        use_gpu (bool): Whether to pull a gpu-compatible docker image
+        for the model container.
+
+        transformers_version (str): The transformers version to use
+        when pulling the docker image.
+
+        pytorch_version (str): The pytorch version to use when pulling
+        the docker image.
+
+        ubuntu_version (str): The ubuntu version to use when pulling
+        the docker image.
+
+    Returns:
+        None
+
+    """
     def __init__(
             self,
             scope: Construct,
@@ -60,7 +106,7 @@ class HuggingfaceSagemaker(Construct):
             model_data_url: str = None,
             model_name: str = None,
             use_gpu: bool = False,
-            transformmers_version: str = "4.26",
+            transformers_version: str = "4.26",
             pytorch_version: str = "1.13",
             ubuntu_version: str = "20.04",
             ) -> None:
@@ -76,7 +122,7 @@ class HuggingfaceSagemaker(Construct):
         # Determine image uri and create container definition
         image_uri = get_image_uri(
             region,
-            transformmers_version,
+            transformers_version,
             pytorch_version,
             ubuntu_version,
             use_gpu,
@@ -93,7 +139,7 @@ class HuggingfaceSagemaker(Construct):
              model_data_url=model_data_url,
              )
 
-        # Set endpoint role/permissions, define Sagemaker Model
+        # Set endpoint role/permissions
         role = iam.Role(
             self, f"{construct_id}-sm-role", assumed_by=iam.ServicePrincipal("sagemaker.amazonaws.com")
         )
@@ -117,9 +163,6 @@ class HuggingfaceSagemaker(Construct):
             primary_container=container,
             model_name=f'model-{endpoint_name}',
         )
-
-
-        # Creates SageMaker Endpoint configurations
         endpoint_configuration = sagemaker.CfnEndpointConfig(
             self,
             f"endpoint-config-{endpoint_name}",
@@ -133,8 +176,6 @@ class HuggingfaceSagemaker(Construct):
                 )
             ],
         )
-
-        # Creates Real-Time Endpoint
         endpoint = sagemaker.CfnEndpoint(
             self,
             f"endpoint={endpoint_name}",
@@ -142,12 +183,48 @@ class HuggingfaceSagemaker(Construct):
             endpoint_config_name=endpoint_configuration.endpoint_config_name,
         )
 
-        # adds depends on for different resources
+        # Add dependencies so the endpoint isn't created before the
+        # model or endpoint config
         model.node.add_dependency(role)
         endpoint_configuration.node.add_dependency(model)
         endpoint.node.add_dependency(endpoint_configuration)
 
 class SagemakerFromImageAndModelData(Construct):
+    """
+    Deploys a sagemaker model based on a custom docker image and a
+    model data file.
+
+    Args:
+        region (str): The region of the cdk stack.
+
+        account (str): The account number where the ECR repo is located.
+
+        construct_id (str): The construct id.
+
+        endpoint_name (str): The name that the endpoint will assume
+        once deployed.
+
+        image_repo_name (str): The name of the ECR repo from which the
+        image will be pulled.
+
+        image_tag (str): The tag of the desired image.
+
+        model_data_bucket (str): The S3 bucket where the model data
+        file is located.
+
+        serverless_config (dict): The config for serverless endpoints,
+        which is only used if the endpoint is serverles.
+
+        production_variants (dict): The production variants of the
+        endpoint.
+
+        container_environment (dict): The environment variables to
+        start the container with.
+
+    Returns:
+        None
+
+    """
     def __init__(
             self,
             scope: Construct,

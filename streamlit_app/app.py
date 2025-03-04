@@ -10,11 +10,6 @@ counterfactual_lambda = os.getenv("COUNTERFACTUAL_LAMBDA")
 sentiment_unmasking_model = os.getenv("SENTIMENT_UNMASKING_MODEL")
 sentiment_classification_model = os.getenv("SENTIMENT_CLASSIFICATION_MODEL")
 
-print(
-    counterfactual_lambda,
-    sentiment_unmasking_model,
-    sentiment_classification_model,
-)
 
 input_text = st.text_input("Insert text to provide counterfactuals for")
 
@@ -26,8 +21,9 @@ if st.button("Press to generate counterfactuals"):
             {
                 "input_text": input_text,
                 "classification_model": sentiment_classification_model,
-                "mlm_model": sentiment_unmasking_model,
-                "desired_class": "positive",
+                "masked_language_model": sentiment_unmasking_model,
+                "desired_class": "LABEL_2",
+                "undesired_class": "LABEL_0",
             }
         )
     )

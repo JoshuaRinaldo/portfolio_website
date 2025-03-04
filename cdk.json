@@ -19,7 +19,6 @@
         },
         "model_data_url": "s3://model-files-jrinaldo/masked_language_modelling/distilbert_positive/model.tar.gz"
       },
-      
       {
         "endpoint_type": "image_and_model_data",
         "endpoint_name": "sentiment-classifier",
@@ -31,10 +30,8 @@
           "max_concurrency": 1
         },
         "container_environment": {
-            "TOKENIZER": "distilbert/distilbert-base-uncased",
             "SERVERLESS": "True",
-            "BUCKET_NAME": "model-files-jrinaldo",
-            "MODEL_PATH": "text_classification/emotion/model.tar.gz"
+            "HUB_MODEL_NAME": "cardiffnlp/twitter-roberta-base-sentiment"
         }
       }
     ]
