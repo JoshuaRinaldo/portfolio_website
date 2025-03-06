@@ -1,7 +1,6 @@
 from aws_cdk import (
     aws_iam as iam,
     Stack,
-    aws_lambda as _lambda, # Import the Lambda module
     CfnOutput,
     Duration,
     RemovalPolicy,
@@ -14,7 +13,8 @@ from aws_cdk import (
     aws_route53 as route53,
     aws_certificatemanager as certificatemanager
 )
-from .sagemaker import HuggingfaceSagemaker, SagemakerFromImageAndModelData
+from .sagemaker import SagemakerHuggingface, SagemakerFromImageAndModelData
+from .lambda_ import LambdaFunctionFromDockerImage
 from constructs import Construct
 from pathlib import Path
 
@@ -26,10 +26,15 @@ class StreamlitSite(Stack):
         region = self.node.try_get_context("region")
         account = self.node.try_get_context("account")
         sagemaker_endpoints = self.node.try_get_context("sagemaker_endpoints")
+        lambda_functions = self.node.try_get_context("lambda_functions")
         environment = self.node.try_get_context("environment")
         hosted_zone_id = self.node.try_get_context("hosted_zone_id")
         domain_name = self.node.try_get_context("domain_name")
         platform = self.node.try_get_context("platform")
+        streamlit_environment_variables = self.node.try_get_context("streamlit_environment_variables")
+
+        if not streamlit_environment_variables:
+            streamlit_environment_variables = {}
 
         cpu_platform = (
             ecrassets.Platform.LINUX_ARM64 if platform == "arm64"
@@ -39,56 +44,47 @@ class StreamlitSite(Stack):
             ecs.CpuArchitecture.ARM64 if platform == "arm64"
             else ecs.CpuArchitecture.AMD64
         )
-        
 
-        counterfactual_lambda_role = iam.Role(self, "My Role",
-            assumed_by=iam.ServicePrincipal("lambda.amazonaws.com")
-        )
-        counterfactual_lambda = _lambda.DockerImageFunction(
-            scope=self,
-            id="ExampleDockerLambda",
-            role=counterfactual_lambda_role,
-            timeout=Duration.minutes(5),
-            code=_lambda.DockerImageCode.from_image_asset(
+        for lambda_function_n in lambda_functions:
+            lambda_env_var_name = lambda_function_n["environment_variable_name"]
+            if lambda_function_n["function_type"] == "from_docker_image":
+                lambda_function = LambdaFunctionFromDockerImage(
+                    scope = self,
+                    construct_id = f"{construct_id}-{lambda_env_var_name}",
+                    lambda_folder = lambda_function_n.get("folder_name", None),
+                    ecr_repo = lambda_function_n.get("ecr_repo", None),
+                    tag = lambda_function_n.get("tag", None),
+                    platform = lambda_function_n.get("platform"),
+                    timeout = lambda_function_n.get("timeout", 5),
+                    policy_statements = lambda_function_n.get("policy_statements", {}),
+                )
 
-                # Directory relative to where you execute cdk deploy
-                # contains a Dockerfile with build instructions
-                directory="lambda_functions/unmask_models/.",
-                platform=ecrassets.Platform.LINUX_AMD64
-            ),
-        )
-        counterfactual_lambda_role.add_managed_policy(
-            iam.ManagedPolicy.from_aws_managed_policy_name("service-role/AWSLambdaBasicExecutionRole")
-            )
-        
-        counterfactual_lambda_role.add_to_policy(iam.PolicyStatement(
-            resources=["*"],
-            actions=["sagemaker:InvokeEndpoint"]
-        ))
-
-        counterfactual_lambda_name = counterfactual_lambda.function_name
+            lambda_name = lambda_function.return_name()
+            streamlit_environment_variables[lambda_env_var_name] = lambda_name
 
         # Create SageMaker endpoints
         for endpoint_n in sagemaker_endpoints:
+            endpoint_env_var_name = endpoint_n["environment_variable_name"]
             if endpoint_n["endpoint_type"] == "image_and_model_data":
-                SagemakerFromImageAndModelData(
+                
+                sagemaker_endpoint = SagemakerFromImageAndModelData(
                     scope=self,
                     region = region,
                     account = account,
-                    construct_id = endpoint_n["endpoint_name"],
+                    construct_id = f"{construct_id}-{endpoint_env_var_name}",
                     endpoint_name = endpoint_n["endpoint_name"],
                     image_repo_name = endpoint_n["image_repo_name"],
                     image_tag = endpoint_n["image_tag"],
                     model_data_bucket = endpoint_n["model_data_bucket"],
                     serverless_config = endpoint_n.get("serverless_config", {}),
-                    container_environment=endpoint_n.get("container_environment", {})
+                    container_environment=endpoint_n.get("container_environment", {}),
                 )
 
             elif endpoint_n["endpoint_type"] == "huggingface":
-                HuggingfaceSagemaker(
+                sagemaker_endpoint = SagemakerHuggingface(
                     scope = self,
                     region = region,
-                    construct_id = endpoint_n["endpoint_name"],
+                    construct_id = f"{construct_id}-{endpoint_env_var_name}",
                     endpoint_name = endpoint_n["endpoint_name"],
                     model_task=endpoint_n.get("model_task"),
                     serverless_config = endpoint_n.get("serverless_config", {}),
@@ -97,7 +93,12 @@ class StreamlitSite(Stack):
                     model_name = endpoint_n.get("model_name"),
                     use_gpu = endpoint_n.get("use_gpu", False),
                 )
-            
+
+            endpoint_name = sagemaker_endpoint.return_name()
+            streamlit_environment_variables[endpoint_env_var_name] = endpoint_name
+        
+        # If deploying to a test environment, label env in domain name,
+        # if prod environment, deploy without env in domain name
         if environment == "prod":
             api_domain_name = domain_name
         else:
@@ -112,7 +113,6 @@ class StreamlitSite(Stack):
             vpc_name=f"streamlit-app-vpc-{environment}",
             nat_gateways=1,
         )
-
         vpc.add_gateway_endpoint(
             f"vpc-s3-endpoint-{environment}",
             service=ec2.GatewayVpcEndpointAwsService.S3
@@ -172,26 +172,20 @@ class StreamlitSite(Stack):
                 ],
                 resources=["arn:aws:ecr:us-east-1:324014232528:repository/*"]
                 ),
-
                 iam.PolicyStatement(
                 actions=[
                 "sagemaker:InvokeEndpoint",
                 ],
                 resources=["*"]
                 ),
-
-
                 iam.PolicyStatement(
                 actions=[
                 "lambda:InvokeFunction"
                 ],
                 resources=["*"]
                 ),
-
             ]
         )
-
-
         ecs_cluster.node.add_dependency(
             ecs_task_role_iam_policy
         )
@@ -230,14 +224,11 @@ class StreamlitSite(Stack):
             task_image_options=ecspatterns.ApplicationLoadBalancedTaskImageOptions(
                 image=ecs.ContainerImage.from_docker_image_asset(docker_image),
                 container_port=8080,
-                environment={
-                    "COUNTERFACTUAL_LAMBDA": counterfactual_lambda_name,
-                    "SENTIMENT_UNMASKING_MODEL": "sentiment-mlm",
-                    "SENTIMENT_CLASSIFICATION_MODEL": "sentiment-classifier",
-                }
+                environment=streamlit_environment_variables,
             ),
         )
 
+        # Create security group for load balancer
         load_balancer = alb_ecs_service.load_balancer
         security_group = ec2.SecurityGroup(
             self,
@@ -255,7 +246,6 @@ class StreamlitSite(Stack):
             peer=ec2.Peer.any_ipv6(),
             connection=ec2.Port.tcp(443)
         )
-
         load_balancer.add_security_group(
             security_group
         )
@@ -276,5 +266,5 @@ class StreamlitSite(Stack):
         CfnOutput(
             self,
             "api_url",
-            value=f"https://{domain_name}",
+            value=f"https://{api_domain_name}",
         )

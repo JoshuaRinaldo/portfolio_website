@@ -47,7 +47,7 @@ def get_image_uri(
     return f"{repository}:{tag}"
 
 
-class HuggingfaceSagemaker(Construct):
+class SagemakerHuggingface(Construct):
     """
     Deploys an off-the-shelf huggingface model using the default docker
     image.
@@ -176,7 +176,7 @@ class HuggingfaceSagemaker(Construct):
                 )
             ],
         )
-        endpoint = sagemaker.CfnEndpoint(
+        self.endpoint = sagemaker.CfnEndpoint(
             self,
             f"endpoint={endpoint_name}",
             endpoint_name=endpoint_name,
@@ -187,7 +187,10 @@ class HuggingfaceSagemaker(Construct):
         # model or endpoint config
         model.node.add_dependency(role)
         endpoint_configuration.node.add_dependency(model)
-        endpoint.node.add_dependency(endpoint_configuration)
+        self.endpoint.node.add_dependency(endpoint_configuration)
+    
+    def return_name(self):
+        return self.endpoint.endpoint_name
 
 class SagemakerFromImageAndModelData(Construct):
     """
@@ -286,7 +289,7 @@ class SagemakerFromImageAndModelData(Construct):
         )
 
         # Creates Real-Time Endpoint
-        endpoint = sagemaker.CfnEndpoint(
+        self.endpoint = sagemaker.CfnEndpoint(
             self,
             f"endpoint-{endpoint_name}",
             endpoint_name=endpoint_name,
@@ -296,5 +299,7 @@ class SagemakerFromImageAndModelData(Construct):
         # adds depends on for different resources
         model.node.add_dependency(role)
         endpoint_configuration.node.add_dependency(model)
-        endpoint.node.add_dependency(endpoint_configuration)
-        
+        self.endpoint.node.add_dependency(endpoint_configuration)
+    
+    def return_name(self):
+        return self.endpoint.endpoint_name

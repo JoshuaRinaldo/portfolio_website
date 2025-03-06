@@ -7,11 +7,23 @@
     "hosted_zone_id": "Z06894253TINLH6L5UR69",
     "domain_name": "joshrinaldo.com",
     "platform": "arm64",
-
-
+    "lambda_functions": [
+      {
+        "function_type": "from_docker_image",
+        "environment_variable_name": "COUNTERFACTUAL_LAMBDA",
+        "folder_name": "text_counterfactuals",
+        "policy_statements": [
+          {
+            "resources": ["*"],
+            "actions": ["sagemaker:InvokeEndpoint"]
+          }
+        ]
+      }
+    ],
     "sagemaker_endpoints": [
       {
         "endpoint_type": "huggingface",
+        "environment_variable_name": "SENTIMENT_UNMASKING_MODEL",
         "endpoint_name": "sentiment-mlm",
         "serverless_config": {
           "memory_size_in_mb": 2048,
@@ -21,6 +33,7 @@
       },
       {
         "endpoint_type": "image_and_model_data",
+        "environment_variable_name": "SENTIMENT_CLASSIFICATION_MODEL",
         "endpoint_name": "sentiment-classifier",
         "image_repo_name": "new-serverless-huggingface-seq2class",
         "image_tag": "x86_64",

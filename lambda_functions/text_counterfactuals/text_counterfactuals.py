@@ -220,7 +220,8 @@ def unmask_string(
 
         accepted_unmasks = []
         while top_k > len(accepted_unmasks):
-            max_class_index = unmasked_string_class_prediction.index(max(unmasked_string_class_prediction))
+            max_class = max(unmasked_string_class_prediction)
+            max_class_index = unmasked_string_class_prediction.index(max_class)
             accepted_unmasks.append(unmasked_strings[max_class_index])
 
             unmasked_string_class_prediction.pop(max_class_index)
@@ -282,15 +283,12 @@ def handler(event, context):
     input_text = event["input_text"]
     classification_model = event["classification_model"]
     masked_language_model = event["masked_language_model"]
-
     desired_class = event["desired_class"]
     undesired_class = event["undesired_class"]
 
     # Generate explanation using the classification model
     request = {"data": input_text, "explain": True}
     explanation = invoke_endpoint(request, endpoint_name=classification_model)
-
-    print("This is the explanation: ", explanation)
 
     tokens = []
     for token_n in explanation["explanation"]:
@@ -342,7 +340,9 @@ def handler(event, context):
         masked_language_model=masked_language_model,
         top_k=max(2, int(5/len(mask_indices)))
         )
+    
 
     return {
         "result": unmasked_strings,
+        "explanation": explanation,
         }
