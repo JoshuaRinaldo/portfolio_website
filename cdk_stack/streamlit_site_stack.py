@@ -20,11 +20,109 @@ from pathlib import Path
 
 
 class StreamlitSite(Stack):
+    """
+    The StreamlitSite class provisions a collection of resources that
+    can be used to serve interactive machine learning models using a
+    streamlit app.
+
+    Args:
+
+        account (str): The AWS account number of the AWS aacount to
+        deploy resources in.
+
+        region (str): The region of the cdk stack.
+
+        sagemaker_endpoints (List[Dict]): A list of dictionaries
+        containing arguments for a SageMaker endpoint class. Each
+        dictionary in the list represents an individual SageMaker 
+        endpoint. Each dictionary must contain a key "endpoint_type"
+        that maps to a class in sagemaker.py, and an
+        environment_variable_name, which will be used to pass the
+        endpoint name to the streamlit app as an environment variable.
+        The remaining keys in the endpoint's dictionary are dependent
+        on the endpoint class. See the example below:
+        ```
+        {
+            "endpoint_type": "huggingface",
+            "environment_variable_name": "SENTIMENT_UNMASKING_MODEL",
+            "serverless_config": {
+                "memory_size_in_mb": 2048,
+                "max_concurrency": 1
+            },
+            "model_data_url": "an s3 uri"
+        }
+        ```
+        See the sagemaker.py file for supported endpoint classes and
+        a breakdown of their arguments.
+
+        lambda_functions (List[Dict]): A list of dictionaries
+        containing arguments for a Lambda function class. Each
+        dictionary in the list represents an individual Lambda
+        function. Each dictionary must contain a key "function_type"
+        that maps to a class in lambda_.py, and an
+        environment_variable_name, which will be used to pass the
+        lambda function name to the streamlit app as an environment
+        variable. The remaining keys in the Lambda function's
+        dictionary are dependent on the function's class. See the
+        example below:
+        ```
+        {
+            "function_type": "from_docker_image",
+            "environment_variable_name": "COUNTERFACTUAL_LAMBDA",
+            "folder_name": "text_counterfactuals",
+            "policy_statements": [
+                {
+                "resources": ["*"],
+                "actions": ["sagemaker:InvokeEndpoint"]
+                }
+            ]
+        }
+        ```
+        See the lambda_.py file for supported function classes and a
+        breakdown of their arguments.
+
+        environment (str): The environment of the deployment. This
+        allows for separate testing and production environments. If the
+        deployment is not in the "prod" environment, the environment
+        name is included in the deployment's domain name.
+
+        hosted_zone_id (str): The hosted zone id of the website's
+        domain name.
+
+        domain_name (str): The domain name of the website.
+
+        platform (str): The cpu platform/architecture to run the
+        streamlit app on. Can either be "arm64" or "amd64". Defaults to
+        "amd64", but please take note of your local machine's
+        compatibility when modifying this argument.
+
+        streamlit_environment_variables (Dict[str, Any]): Extra
+        environment variables to pass to the streamlit app. By default
+        this variable initializes as empty and is filled with the names
+        of external resources (lambda functions and sagemaker
+        endpoints).
+
+        ecs_policy_statements (List[Dict[str, List[str]]]): A list of
+        extra policy statements to add to the streamlit app. By
+        default, the app is allowed to invoke SageMaker endpoints and
+        Lambda functions. If additional permissions are required, they
+        are added through this argument. Structure additional policy
+        statements as follows:
+
+        ```
+        {
+            "resources": ["the resources to include in the policy"],
+            "actions": ["the actions to include in the policy"]
+        }
+        ```
+
+    Returns:
+        None
+    """
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
-
-        region = self.node.try_get_context("region")
         account = self.node.try_get_context("account")
+        region = self.node.try_get_context("region")
         sagemaker_endpoints = self.node.try_get_context("sagemaker_endpoints")
         lambda_functions = self.node.try_get_context("lambda_functions")
         environment = self.node.try_get_context("environment")
@@ -32,6 +130,8 @@ class StreamlitSite(Stack):
         domain_name = self.node.try_get_context("domain_name")
         platform = self.node.try_get_context("platform")
         streamlit_environment_variables = self.node.try_get_context("streamlit_environment_variables")
+        ecs_policy_statements = self.node.try_get_context("ecs_policy_statements")
+
 
         if not streamlit_environment_variables:
             streamlit_environment_variables = {}
@@ -45,6 +145,8 @@ class StreamlitSite(Stack):
             else ecs.CpuArchitecture.AMD64
         )
 
+        # Create Lambda functions
+        lambda_arns = []
         for lambda_function_n in lambda_functions:
             lambda_env_var_name = lambda_function_n["environment_variable_name"]
             if lambda_function_n["function_type"] == "from_docker_image":
@@ -59,12 +161,15 @@ class StreamlitSite(Stack):
                     policy_statements = lambda_function_n.get("policy_statements", {}),
                 )
 
-            lambda_name = lambda_function.return_name()
+            lambda_name, lambda_arn = lambda_function.return_name()
             streamlit_environment_variables[lambda_env_var_name] = lambda_name
+            lambda_arns.append(lambda_arn)
+
 
         # Create SageMaker endpoints
+        sagemaker_arns = []
         for endpoint_n in sagemaker_endpoints:
-            endpoint_env_var_name = endpoint_n["environment_variable_name"]
+            endpoint_env_var_name = endpoint_n.get("environment_variable_name")
             if endpoint_n["endpoint_type"] == "image_and_model_data":
                 
                 sagemaker_endpoint = SagemakerFromImageAndModelData(
@@ -176,16 +281,26 @@ class StreamlitSite(Stack):
                 actions=[
                 "sagemaker:InvokeEndpoint",
                 ],
-                resources=["*"]
+                resources=sagemaker_arns
                 ),
                 iam.PolicyStatement(
                 actions=[
                 "lambda:InvokeFunction"
                 ],
-                resources=["*"]
+                resources=lambda_arns
                 ),
             ]
         )
+
+        if ecs_policy_statements:
+            for policy_statement_n in ecs_policy_statements:
+                ecs_task_role_iam_policy.add_to_policy(
+                iam.PolicyStatement(
+                    resources = policy_statement_n["resources"],
+                    actions=policy_statement_n["actions"]
+                )
+            )
+
         ecs_cluster.node.add_dependency(
             ecs_task_role_iam_policy
         )
@@ -250,6 +365,11 @@ class StreamlitSite(Stack):
             security_group
         )
 
+        # Attach iam policy to alb/ecs cluster
+        alb_ecs_service.task_definition.task_role.attach_inline_policy(
+            ecs_task_role_iam_policy
+        )
+
         # Configure health check using streamlit's default health check
         # endpoint
         alb_ecs_service.target_group.configure_health_check(
@@ -257,11 +377,6 @@ class StreamlitSite(Stack):
             interval=Duration.seconds(60),
             unhealthy_threshold_count=5,
             )
-
-        # Attach iam policy to alb/ecs cluster
-        alb_ecs_service.task_definition.task_role.attach_inline_policy(
-            ecs_task_role_iam_policy
-        )
 
         CfnOutput(
             self,

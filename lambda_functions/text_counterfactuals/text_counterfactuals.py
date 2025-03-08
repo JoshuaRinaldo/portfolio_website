@@ -263,10 +263,11 @@ def handler(event, context):
         counterfactuals generated based on it.
 
         classification_model (str): The name of the classification
-        model being used to generate explanations.
+        sagemaker endpoint being used to generate explanations.
 
         masked_language_model (str): The name of the masked language
-        model that will be used to unmask important tokens.
+        model sagemaker endpoint that will be used to unmask important
+        tokens.
 
         desired_class (str): The name of the desired class. The input
         text will be "steered" towards this class during the

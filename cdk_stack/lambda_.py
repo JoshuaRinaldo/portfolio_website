@@ -66,4 +66,4 @@ class LambdaFunctionFromDockerImage(Construct):
             ))
     
     def return_name(self):
-        return self.counterfactual_lambda.function_name
+        return self.counterfactual_lambda.function_name, self.counterfactual_lambda.function_arn

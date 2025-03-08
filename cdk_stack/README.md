@@ -14,9 +14,10 @@ from which all resources are provisioned. It reads the context from
 [`cdk.json`](../cdk.json) to determine the deployment configuration.
 The file will create the following resources:
 
-1. Lambda functions.
+1. Lambda functions (based on classes in [`lambda_.py`](lambda_.py)).
 
-2. Sagemaker endpoints.
+2. Sagemaker endpoints (based on classes in
+   [`sagemaker.py`](sagemaker.py)).
 
 3. A Virtual Private Cloud (VPC).
 
@@ -45,7 +46,7 @@ and off-the-shelf sagemaker models. It currently supports the following
 sagemaker model types:
 
 #### `SagemakerHuggingface`
-- `SagemakerHuggingface` allows users to deploy huggingface models,
+- `SagemakerHuggingface` allows users to deploy huggingface models
   and supports the deployment of off-the-shelf models (by specifying
   the name of the model) or fine-tuned models (by specifying the model
   data location).

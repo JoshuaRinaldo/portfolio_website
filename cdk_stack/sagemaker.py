@@ -42,6 +42,10 @@ def get_image_uri(
         ubuntu_version,
         use_gpu,
     ):
+    """
+    Formats a string to correspond to a huggingface-provided docker
+    image.
+    """
     repository = f"{region_dict[region]}.dkr.ecr.{region}.amazonaws.com/huggingface-pytorch-inference"
     tag = f"{pytorch_version}-transformers{transformers_version}-{'gpu-py36-cu111' if use_gpu == True else 'cpu-py39'}-ubuntu{ubuntu_version}"
     return f"{repository}:{tag}"
@@ -49,8 +53,8 @@ def get_image_uri(
 
 class SagemakerHuggingface(Construct):
     """
-    Deploys an off-the-shelf huggingface model using the default docker
-    image.
+    Deploys an off-the-shelf huggingface model from the huggingface hub
+    or a finetuned model from a model data file.
 
     Args:
         region (str): The region of the cdk stack.
@@ -190,7 +194,10 @@ class SagemakerHuggingface(Construct):
         self.endpoint.node.add_dependency(endpoint_configuration)
     
     def return_name(self):
-        return self.endpoint.endpoint_name
+        """
+        Returns the endpoint name and arn.
+        """
+        return self.endpoint.endpoint_name, self.endpoint.endpoint_arn
 
 class SagemakerFromImageAndModelData(Construct):
     """
@@ -302,4 +309,7 @@ class SagemakerFromImageAndModelData(Construct):
         self.endpoint.node.add_dependency(endpoint_configuration)
     
     def return_name(self):
-        return self.endpoint.endpoint_name
+        """
+        Returns the endpoint name and arn.
+        """
+        return self.endpoint.endpoint_name, self.endpoint.endpoint_arn
