@@ -104,7 +104,7 @@ class StreamlitSite(Stack):
 
         ecs_policy_statements (List[Dict[str, List[str]]]): A list of
         extra policy statements to add to the streamlit app. By
-        default, the app is allowed to invoke SageMaker endpoints and
+        default the app is allowed to invoke SageMaker endpoints and
         Lambda functions. If additional permissions are required, they
         are added through this argument. Structure additional policy
         statements as follows:
@@ -142,7 +142,7 @@ class StreamlitSite(Stack):
         )
         cpu_architecture = (
             ecs.CpuArchitecture.ARM64 if platform == "arm64"
-            else ecs.CpuArchitecture.AMD64
+            else ecs.CpuArchitecture.X86_64
         )
 
         # Create Lambda functions
@@ -200,7 +200,9 @@ class StreamlitSite(Stack):
                 )
 
             endpoint_name = sagemaker_endpoint.return_name()
+            endpoint_arn = f"arn:aws:sagemaker:{region}:{account}:endpoint/{endpoint_name}"
             streamlit_environment_variables[endpoint_env_var_name] = endpoint_name
+            sagemaker_arns.append(endpoint_arn)
         
         # If deploying to a test environment, label env in domain name,
         # if prod environment, deploy without env in domain name

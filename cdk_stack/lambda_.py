@@ -1,5 +1,6 @@
 from aws_cdk import (
     aws_ecr_assets as ecrassets,
+    aws_ecs as ecs,
     aws_iam as iam,
     aws_lambda as _lambda,
     Duration,
@@ -8,6 +9,46 @@ from constructs import Construct
 from typing import List
 
 class LambdaFunctionFromDockerImage(Construct):
+    """
+    Deploys a lambda function from a docker image.
+
+    Args:
+        construct_id (str): The function's construct id.
+
+        lambda_folder (str): The folder name of the lambda function.
+        The lambda folder must be in the lambda_functions folder. This
+        argument is only used if the docker image is being built during
+        deployment.
+
+        platform (str): The CPU platform/architecture to use.
+
+        ecr_repo (str): The name of the ECR repo containing the docker
+        image. This argument is only used if the docker image is being
+        pulled from an ECR repository.
+
+        tag (str): The tag of the docker image in the ECR repo. Must be
+        a valid tag in the ECR repo passed in the ecr_repo argument.
+
+        timeout (int): The time (in minutes) before the lambda function
+        times out.
+
+        policy_statements (List[Dict[str, List[str]]]): A list of
+        extra policy statements to add to the lambda function. By
+        default, the function has the basic Lambda role. If additional
+        permissions are required, they are added through this argument.
+        Structure additional policy statements as follows:
+
+        ```
+        {
+            "resources": ["the resources to include in the policy"],
+            "actions": ["the actions to include in the policy"]
+        }
+        ```
+
+    Returns:
+        None
+
+    """
     def __init__(
             self,
             scope: Construct,
@@ -17,7 +58,7 @@ class LambdaFunctionFromDockerImage(Construct):
             ecr_repo: str = None,
             tag: str = None,
             timeout: int = 5,
-            policy_statements: List[dict[str, List]] = {},
+            policy_statements: List[dict[str, List[str]]] = [],
             ) -> None:
         
         super().__init__(scope, construct_id)
@@ -48,12 +89,16 @@ class LambdaFunctionFromDockerImage(Construct):
                 " defined."
             )
 
-        self.counterfactual_lambda = _lambda.DockerImageFunction(
+        self.lambda_function = _lambda.DockerImageFunction(
             scope=self,
             id="ExampleDockerLambda",
             role=lambda_role,
             timeout=Duration.minutes(timeout),
             code=lambda_docker_image,
+            architecture=(
+            _lambda.Architecture.ARM64 if platform == "arm64"
+            else _lambda.Architecture.X86_64
+        )
         )
         lambda_role.add_managed_policy(
             iam.ManagedPolicy.from_aws_managed_policy_name("service-role/AWSLambdaBasicExecutionRole")
@@ -66,4 +111,7 @@ class LambdaFunctionFromDockerImage(Construct):
             ))
     
     def return_name(self):
-        return self.counterfactual_lambda.function_name, self.counterfactual_lambda.function_arn
+        """
+        Returns the function name and arn.
+        """
+        return self.lambda_function.function_name, self.lambda_function.function_arn

@@ -6,7 +6,7 @@ authored by [Josh Rinaldo](https://github.com/JoshuaRinaldo).
 
 The resources in this stack can be modified by editing the
 [`cdk.json`](cdk.json) file's context. Sagemaker endpoints and Lambda
-functions are built based on arguments provided in the context, so
+functions are built based on arguments provided in the context so
 models and other capabilities can be added or removed with relative
 ease.
 

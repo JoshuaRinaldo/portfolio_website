@@ -1,5 +1,6 @@
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_sagemaker as sagemaker
+from aws_cdk import Fn
 from constructs import Construct
 
 from typing import Any
@@ -180,9 +181,10 @@ class SagemakerHuggingface(Construct):
                 )
             ],
         )
+        self.endpoint_id = f"endpoint-{endpoint_name}"
         self.endpoint = sagemaker.CfnEndpoint(
             self,
-            f"endpoint={endpoint_name}",
+            self.endpoint_id,
             endpoint_name=endpoint_name,
             endpoint_config_name=endpoint_configuration.endpoint_config_name,
         )
@@ -197,7 +199,7 @@ class SagemakerHuggingface(Construct):
         """
         Returns the endpoint name and arn.
         """
-        return self.endpoint.endpoint_name, self.endpoint.endpoint_arn
+        return self.endpoint.endpoint_name
 
 class SagemakerFromImageAndModelData(Construct):
     """
@@ -296,9 +298,10 @@ class SagemakerFromImageAndModelData(Construct):
         )
 
         # Creates Real-Time Endpoint
+        self.endpoint_id = f"endpoint-{endpoint_name}"
         self.endpoint = sagemaker.CfnEndpoint(
             self,
-            f"endpoint-{endpoint_name}",
+            self.endpoint_id,
             endpoint_name=endpoint_name,
             endpoint_config_name=endpoint_configuration.endpoint_config_name,
         )
@@ -312,4 +315,4 @@ class SagemakerFromImageAndModelData(Construct):
         """
         Returns the endpoint name and arn.
         """
-        return self.endpoint.endpoint_name, self.endpoint.endpoint_arn
+        return self.endpoint.endpoint_name

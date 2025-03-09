@@ -9,6 +9,8 @@ SageMaker endpoints and Lambda functions that have been defined in
 
 ## [`streamlit_site_stack.py`](streamlit_site_stack.py)
 
+### The Main Stack
+
 [`streamlit_site_stack.py`](streamlit_site_stack.py) is the main file
 from which all resources are provisioned. It reads the context from
 [`cdk.json`](../cdk.json) to determine the deployment configuration.
@@ -38,6 +40,101 @@ The file will create the following resources:
 
 8. A security group allowing all incoming traffic. This allows anybody
    to access the webpage.
+
+### Using [`cdk.json`](../cdk.json)
+
+Each of the arguments supported by [`cdk.json`](../cdk.json) are
+described below:
+
+ - `account` `(str)`: The AWS account number of the AWS aacount to
+deploy resources in.
+
+ - `region` `(str)`: The region of the cdk stack.
+
+ - `sagemaker_endpoints` `(List[Dict])`: A list of dictionaries
+   containing arguments for a SageMaker endpoint class. Each
+   dictionary in the list represents an individual SageMaker 
+   endpoint. Each dictionary must contain a key "endpoint_type"
+   that maps to a class in sagemaker.py, and an
+   environment_variable_name, which will be used to pass the
+   endpoint name to the streamlit app as an environment variable.
+   The remaining keys in the endpoint's dictionary are dependent
+   on the endpoint class. See the example below:
+   ```
+   {
+      "endpoint_type": "huggingface",
+      "environment_variable_name": "SENTIMENT_UNMASKING_MODEL",
+      "serverless_config": {
+            "memory_size_in_mb": 2048,
+            "max_concurrency": 1
+      },
+      "model_data_url": "an s3 uri"
+   }
+   ```
+   See the sagemaker.py file for supported endpoint classes and
+   a breakdown of their arguments.
+
+ - `lambda_functions` `(List[Dict])`: A list of dictionaries
+   containing arguments for a Lambda function class. Each
+   dictionary in the list represents an individual Lambda
+   function. Each dictionary must contain a key "function_type"
+   that maps to a class in lambda_.py, and an
+   environment_variable_name which will be used to pass the
+   lambda function name to the streamlit app as an environment
+   variable. The remaining keys in the Lambda function's
+   dictionary are dependent on the function's class. See the
+   example below:
+   ```
+   {
+      "function_type": "from_docker_image",
+      "environment_variable_name": "COUNTERFACTUAL_LAMBDA",
+      "folder_name": "text_counterfactuals",
+      "policy_statements": [
+            {
+            "resources": ["*"],
+            "actions": ["sagemaker:InvokeEndpoint"]
+            }
+      ]
+   }
+   ```
+   See the lambda_.py file for supported function classes and a
+   breakdown of their arguments.
+
+ - `environment` `(str)`: The environment of the deployment. This
+   allows for separate testing and production environments. If the
+   deployment is not in the "prod" environment, the environment
+name is included in the deployment's domain name.
+
+ - `hosted_zone_id` `(str)`: The hosted zone id of the website's
+   domain name.
+
+ - `domain_name` `(str)`: The domain name of the website.
+
+ - `platform` `(str)`: The cpu platform/architecture to run the
+   streamlit app on. Can either be `"arm64"` or `"amd64"`. Defaults to
+   `"amd64"`, but please take note of your local machine's
+   compatibility when modifying this argument.
+
+ - `streamlit_environment_variables` `(Dict[str, Any])`: Extra
+   environment variables to pass to the streamlit app. By default
+   this variable initializes as empty and is filled with the names
+   of external resources (lambda functions and sagemaker
+   endpoints).
+
+ - `ecs_policy_statements` `(List[Dict[str, List[str]]])`: A list of
+   extra policy statements to add to the streamlit app. By
+   default, the app is allowed to invoke SageMaker endpoints and
+   Lambda functions. If additional permissions are required, they
+   are added through this argument. Structure additional policy
+   statements as follows:
+
+   ```
+   {
+      "resources": ["the resources to include in the policy"],
+      "actions": ["the actions to include in the policy"]
+   }
+   ```
+
 
 ## [`sagemaker.py`](sagemaker.py)
 
