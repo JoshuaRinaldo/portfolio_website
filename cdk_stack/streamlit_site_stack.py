@@ -180,7 +180,7 @@ class StreamlitSite(Stack):
                     endpoint_name = endpoint_n["endpoint_name"],
                     image_repo_name = endpoint_n["image_repo_name"],
                     image_tag = endpoint_n["image_tag"],
-                    model_data_bucket = endpoint_n["model_data_bucket"],
+                    model_data_bucket = endpoint_n.get("model_data_bucket"),
                     serverless_config = endpoint_n.get("serverless_config", {}),
                     container_environment=endpoint_n.get("container_environment", {}),
                 )

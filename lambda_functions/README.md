@@ -12,8 +12,8 @@ to generate text classification counterfactuals for short strings.
 
 The function generates counterfactuals by replacing tokens to move strings
 away from the `undesired_class` and towards the `desired_class`. To
-do this, the function uses a classification model that can provide explanations
-using the [SHAP](https://shap.readthedocs.io/en/latest/index.html)
+do this, the function uses a classification model that can provide
+explanations using the [SHAP](https://shap.readthedocs.io/en/latest/index.html)
 library to determine which tokens had the most impact on the score. The
 function then masks those tokens and uses a masked language model to
 predict replacement tokens. Preferrably, the masked language model is

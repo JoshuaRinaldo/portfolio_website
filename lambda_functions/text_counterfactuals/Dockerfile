@@ -6,4 +6,4 @@ RUN pip install -U pip setuptools wheel \
   && python -m spacy download en_core_web_sm
 
 COPY text_counterfactuals.py .
-CMD ["unmask_models.handler"]
+CMD ["text_counterfactuals.handler"]

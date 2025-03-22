@@ -37,14 +37,13 @@
         "endpoint_name": "sentiment-classifier",
         "image_repo_name": "new-serverless-huggingface-seq2class",
         "image_tag": "x86_64",
-        "model_data_bucket": "model-files-jrinaldo",
         "serverless_config": {
           "memory_size_in_mb": 6144,
           "max_concurrency": 1
         },
         "container_environment": {
             "SERVERLESS": "True",
-            "HUB_MODEL_NAME": "cardiffnlp/twitter-roberta-base-sentiment"
+            "HUB_MODEL_NAME": "distilbert/distilbert-base-uncased-finetuned-sst-2-english"
         }
       }
     ]

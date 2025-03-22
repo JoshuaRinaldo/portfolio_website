@@ -1,8 +1,7 @@
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_sagemaker as sagemaker
-from aws_cdk import Fn
 from constructs import Construct
-
+import uuid
 from typing import Any
 
 # The region dict allows us to use the AWS region name to find the
@@ -117,13 +116,14 @@ class SagemakerHuggingface(Construct):
             ) -> None:
         
         super().__init__(scope, construct_id)
+        endpoint_name = f"{endpoint_name}-{str(uuid.uuid4())}"[:62]
 
         if model_name is None and model_data_url is None:
             raise ValueError(
                 "One of model_name or model_data_url must be defined when"
                 " creating huggingface endpoints."
             )
-
+        
         # Determine image uri and create container definition
         image_uri = get_image_uri(
             region,
@@ -175,7 +175,7 @@ class SagemakerHuggingface(Construct):
             production_variants=[
                 sagemaker.CfnEndpointConfig.ProductionVariantProperty(
                     model_name=model.model_name,
-                    variant_name=model.model_name,
+                    variant_name=str(uuid.uuid4()),
                     **production_variants,
                     serverless_config=sagemaker.CfnEndpointConfig.ServerlessConfigProperty(**serverless_config) if serverless_config else None,
                 )
@@ -253,6 +253,7 @@ class SagemakerFromImageAndModelData(Construct):
             ) -> None:
         
         super().__init__(scope, construct_id)
+        endpoint_name = f"{endpoint_name}-{str(uuid.uuid4())}"[:50]
 
         # Set endpoint role/permissions, define Sagemaker Model
         role = iam.Role(

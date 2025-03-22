@@ -7,7 +7,13 @@ file deploys the main streamlit app and uses classes defined in
 SageMaker endpoints and Lambda functions that have been defined in
 [`cdk.json`](../cdk.json).
 
-## [`streamlit_site_stack.py`](streamlit_site_stack.py)
+## Table of Contents
+
+ - [The Main Stack](#the-main-stack)
+ - [Using cdk.json](#using-cdkjson)
+ - [sagemaker.py](#sagemakerpy)
+ - [lambda_.py](#lambda_py)
+
 
 ### The Main Stack
 

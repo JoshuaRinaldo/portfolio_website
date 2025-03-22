@@ -8,7 +8,7 @@ st.image(
     caption="Me sitting in front of an alpine lake",
     use_container_width=True,
     )
-st.title(":wave: Hi, I'm Josh Rinaldo")
+st.title("Hi, I'm Josh Rinaldo :wave:")
 col1, col2 = st.columns([0.2, 0.8])
 with col1:
     st.image(
