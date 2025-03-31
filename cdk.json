@@ -26,7 +26,7 @@
         "environment_variable_name": "SENTIMENT_UNMASKING_MODEL",
         "endpoint_name": "sentiment-mlm",
         "serverless_config": {
-          "memory_size_in_mb": 2048,
+          "memory_size_in_mb": 6144,
           "max_concurrency": 1
         },
         "model_data_url": "s3://model-files-jrinaldo/masked_language_modelling/distilbert_positive/model.tar.gz"
@@ -43,7 +43,7 @@
         },
         "container_environment": {
             "SERVERLESS": "True",
-            "HUB_MODEL_NAME": "distilbert/distilbert-base-uncased-finetuned-sst-2-english"
+            "HUB_MODEL_NAME": "cardiffnlp/twitter-roberta-base-sentiment-latest"
         }
       }
     ]

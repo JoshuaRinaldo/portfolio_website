@@ -1,13 +1,24 @@
+import botocore
 import boto3
 import json
+import logging
 from typing import List
 import re
 from random import sample
 from statistics import stdev
+import time
+import uuid
+
+session_id = str(uuid.uuid4())[:6]
+
+# Set up our logger
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger()
 
 import spacy
 nlp = spacy.load("en_core_web_sm")
 
+start = time.time()
 
 runtime_sagemaker_client = boto3.client(service_name='sagemaker-runtime')
 
@@ -52,16 +63,35 @@ def invoke_endpoint(
     """
     content_type = "application/json"
     payload = json.dumps(request)
-    response = runtime_sagemaker_client.invoke_endpoint(
-        EndpointName=endpoint_name,
-        ContentType=content_type,
-        Body=payload
+
+    retry_count = 0
+    while retry_count < 3:
+        print(f"calling endpoint {endpoint_name} at time: ", time.time()-start)
+        try:
+            response = runtime_sagemaker_client.invoke_endpoint(
+                EndpointName=endpoint_name,
+                ContentType=content_type,
+                Body=payload
+            )
+            result = json.loads(response['Body'].read().decode())
+            return result
+        except botocore.exceptions.ClientError as error:
+            if error.response['Error']['Code'] == 'ThrottlingException':
+                logger.warning(f'Encountered Throttling Exception while calling endpoint {endpoint_name}. Retrying...')
+                retry_count += 1
+                time.sleep(15)
+            else:
+                raise error
+    raise RuntimeError(
+        f"Endpoint {endpoint_name} failed to complete request because"
+         " it is being throttled."
     )
-    result = json.loads(response['Body'].read().decode())
-    return result
+    
 
 def mask_explanation(
         explanation: dict,
+        desired_class: str,
+        undesired_class: str,
         ):
     """
     This function uses Shapley values to mask important tokens that
@@ -84,19 +114,14 @@ def mask_explanation(
 
     """
 
-    prediction = explanation["prediction"]
-    response_dict = {}
-    for label_n in prediction:
-        response_dict[label_n["label"]] = label_n["score"]
-
-    predicted_class = max(response_dict, key=response_dict.get)
+    print("masking explanation with explanation: ", explanation)
 
     shap_values = []
     prediction_tokens = []
     allow_unmask = []
     token_pos = []
     for token_n, vals_n, token_pos_n, allow_unmask_n in explanation["explanation"]:
-        shap_values.append(vals_n[predicted_class])
+        shap_values.append(vals_n[undesired_class] - vals_n[desired_class])
         prediction_tokens.append(token_n)
         token_pos.append(token_pos_n)
         allow_unmask.append(allow_unmask_n)
@@ -104,7 +129,7 @@ def mask_explanation(
     # Define the cutoff threshold using the standard deviation of the
     # shap values
     standard_deviation = stdev(shap_values)
-    std_adjustment = 0.8
+    std_adjustment = 0.7
     mask_indices = [0]*len(prediction_tokens)
 
     # We use to counter to avoid infinite loops in the event of an error
@@ -198,19 +223,32 @@ def unmask_string(
     if not all_accepted_unmasks:
         all_accepted_unmasks = []
 
+
+    print("masked string 1: ", masked_string)
+
     # Replace [MASK] with UNK for all but the leftmost mask. We will
     # slowly replace each 
     for mask_n in mask_indices[1:]:
-        masked_string[mask_n] = "UNK "
-
-    leftmost_mask = mask_indices[0]
-    masked_string[leftmost_mask] = "[MASK] "
-
+        if " " in masked_string[mask_n]:
+            masked_string[mask_n] = "UNK "
+        else:
+            masked_string[mask_n] = "UNK"
     
+
+    print("masked string 2: ", masked_string)
+    leftmost_mask = mask_indices[0]
+    if " " in masked_string[leftmost_mask]:
+        masked_string[leftmost_mask] = "[MASK] "
+    else:
+        masked_string[leftmost_mask] = "[MASK]"
+    print("masked string 3:", masked_string)
+
+
     # Unmask leftmost mask
     unmask_request = {
         "inputs": "".join(masked_string)
     }
+    print("calling unmasking model on inputs: ", json.dumps(unmask_request), session_id)
     unmask_response = invoke_endpoint(
         request=unmask_request,
         endpoint_name=masked_language_model,
@@ -221,11 +259,29 @@ def unmask_string(
     # score of the desired class
     unmasked_string_class_prediction = []
     unmasked_strings = []
+
+    print("unmask response: ", json.dumps(unmask_response), "len: ", len(unmask_response), session_id)
     for unmasked_label in unmask_response:
         unmasked_str = masked_string.copy()
-        unmasked_str[leftmost_mask] = unmasked_label["token_str"] + " "
-        unmasked_str_joined = "".join(unmasked_str)
 
+        
+        if " " in masked_string[leftmost_mask]:
+            unmasked_str[leftmost_mask] = unmasked_label["token_str"] + " "
+        else:
+            unmasked_str[leftmost_mask] = unmasked_label["token_str"]
+        
+        if leftmost_mask>0:
+            if " " not in unmasked_str[leftmost_mask-1]:
+                print("prev token nlp: ", nlp(unmasked_str[leftmost_mask-1]))
+                prev_token_pos = nlp(unmasked_str[leftmost_mask-1])[0].pos_
+                print("prev token pos: ", prev_token_pos)
+                if prev_token_pos not in ["SYM", "PUNCT"]:
+                    unmasked_str[leftmost_mask-1] = unmasked_str[leftmost_mask-1] + " "
+
+
+        # Get score from classification model, which we will use to
+        # find the best unmasks
+        unmasked_str_joined = "".join(unmasked_str)
         class_request = {"data": unmasked_str_joined}
         response = invoke_endpoint(class_request, classification_model)["prediction"]
 
@@ -251,6 +307,8 @@ def unmask_string(
             unmasked_string_class_prediction.pop(max_class_index)
             unmasked_strings.pop(max_class_index)
     
+    print("accepted unmasks: ", accepted_unmasks)
+
     if len(mask_indices) > 1:
         all_accepted_unmasks = []
         for accepted_unmasked_str_n in accepted_unmasks:
@@ -321,29 +379,32 @@ def handler(event, context):
     undesired_class = event["undesired_class"]
     unmasking_token_types = event.get(
         "unmasking_token_types",
-        ["ADJ", "ADV", "AUX", "CCONJ", "INTJ", "PART", "PUNCT"],
+        ["ADJ", "ADV", "AUX", "CCONJ", "INTJ", "PART"],
         )
-    depth = event.get("depth", 0)
+    depth = event.get("depth", 1)
+    print("current depth: ", depth, session_id)
     
-    # We remove apostrophes to simplify tokenization and masking
+    # We remove apostrophes and set all case to lower to simplify
+    # tokenization and masking
     input_text = re.sub("'", "", input_text)
+    input_text = input_text.lower()
 
     # Generate explanation using the classification model
     request = {"data": input_text, "explain": True}
+    print("generating explanation for input: ", json.dumps(request), session_id)
     endpoint_response = invoke_endpoint(request, endpoint_name=classification_model)
+    print("classification reponse: ", json.dumps(endpoint_response), session_id)
     
     label, score = get_predicted_label(endpoint_response)
-
-    if label == desired_class and score>0.5:
+    if label == desired_class and score>0.7:
         return {
-            "result": input_text,
+            "result": [input_text],
             "endpoint_response": endpoint_response,
             "message": (
                 "The model classified your input text as being the desired class,"
                 " so there is no need to provide a counterfactual."
             ),
         }
-
 
     tokens = []
     for token_n in endpoint_response["explanation"]:
@@ -380,7 +441,7 @@ def handler(event, context):
         # replacement regardless of its part-of-speech
         if token_pos_n in unmasking_token_types:
             analyzed_tokens_n.append(True)
-        elif analyzed_tokens_n[1][undesired_class] > max_undesired_shapley*0.8:
+        elif analyzed_tokens_n[1][undesired_class] > max_undesired_shapley*0.7:
             analyzed_tokens_n.append(True)
         else:
             analyzed_tokens_n.append(False)
@@ -389,18 +450,22 @@ def handler(event, context):
 
     # Mask tokens that contribute most to the currently predicted class
     masked_string, mask_indices = mask_explanation(
-        endpoint_response
+        endpoint_response,
+        desired_class,
+        undesired_class,
         )
 
     if len(mask_indices) == 0:
         return {
-            "result": input_text,
+            "result": [input_text],
             "endpoint_response": endpoint_response,
             "message": (
                 "The function failed to mask any input tokens, so no"
                 " counterfactuals can be provided."
             ),
         }
+
+    print("unmasking string: ", masked_string, session_id)
 
     # Apply mlm to unmask the newly masked tokens
     unmasked_strings = unmask_string(
@@ -409,10 +474,12 @@ def handler(event, context):
         desired_class = desired_class,
         classification_model=classification_model,
         masked_language_model=masked_language_model,
-        top_k=max(3, int(6/len(mask_indices)))
+        top_k=max(3, int(6/len(mask_indices))),
         )
     
-    # Only send back strong (score>0.5 in desired class)
+    print("all unmasked strings: ", json.dumps(unmasked_strings), "len: ", len(unmasked_strings), session_id)
+
+    # Only send back strong (score>0.7 in desired class)
     # counterfactuals
     labels, scores = [], []
     for new_string_n in unmasked_strings:
@@ -428,8 +495,14 @@ def handler(event, context):
         label = labels[n]
         score = scores[n]
 
-        if label == desired_class and score > 0.5:
-            counterfactuals_to_keep.append(counterfactual)
+        if label == desired_class and score > 0.7:
+            counterfactuals_to_keep.append([counterfactual, label, score])
+    
+    # Sample 3 possible responses to return
+    counterfactuals_to_keep = sample(
+        population=counterfactuals_to_keep,
+        k=min(3, len(counterfactuals_to_keep)),
+        )
 
     # If there are no strong counterfactuals, we send the closest
     # counterfactual back to the handler for another attempt. We start
@@ -442,7 +515,7 @@ def handler(event, context):
         for n in range(len(unmasked_strings)):
             label = labels[n]
             if label == desired_class:
-                slightly_positive.append(slightly_positive)
+                slightly_positive.append(unmasked_strings[n])
                 slightly_positive_scores.append(scores[n])
         if len(slightly_positive)>0:
             string_to_send = slightly_positive[
@@ -457,7 +530,9 @@ def handler(event, context):
                         )
                     ]
 
-        return handler(
+
+        print(f"Increasing depth from {depth} to {depth+1}", session_id)
+        response = handler(
             event={
                 "input_text": string_to_send,
                 "classification_model": classification_model,
@@ -469,20 +544,23 @@ def handler(event, context):
             },
             context=context,
             )
+        counterfactuals_to_keep = response["result"]
+        message = response["message"]
+
     # If after three attempts at generating counterfactuals, return
     # whatever we have    
     elif len(counterfactuals_to_keep) == 0 and depth == 3:
-        return {
-            "result": unmasked_strings,
-            "endpoint_response": endpoint_response,
-            "message": (
-                "Strong counterfactuals could not be generated."
-                " Returning current counterfactuals."
-            )
-        }
+        counterfactuals_to_keep = unmasked_strings,
+        message = (
+            "Strong counterfactuals could not be generated."
+            " Returning current counterfactuals."
+        )
+    else:
+        message = "Counterfactuals successfully generated"
 
+    print("returning response")
     return {
         "result": counterfactuals_to_keep,
         "endpoint_response": endpoint_response,
-        "message": "Counterfactuals successfully generated"
+        "message": message
         }
