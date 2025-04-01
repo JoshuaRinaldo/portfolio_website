@@ -32,6 +32,8 @@ class LambdaFunctionFromDockerImage(Construct):
         timeout (int): The time (in minutes) before the lambda function
         times out.
 
+        memory_size (int): The memory size in MB.
+        
         policy_statements (List[Dict[str, List[str]]]): A list of
         extra policy statements to add to the lambda function. By
         default, the function has the basic Lambda role. If additional
@@ -58,6 +60,7 @@ class LambdaFunctionFromDockerImage(Construct):
             ecr_repo: str = None,
             tag: str = None,
             timeout: int = 5,
+            memory_size: int = 512,
             policy_statements: List[dict[str, List[str]]] = [],
             ) -> None:
         
@@ -95,6 +98,7 @@ class LambdaFunctionFromDockerImage(Construct):
             role=lambda_role,
             timeout=Duration.minutes(timeout),
             code=lambda_docker_image,
+            memory_size=memory_size,
             architecture=(
             _lambda.Architecture.ARM64 if platform == "arm64"
             else _lambda.Architecture.X86_64

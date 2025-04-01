@@ -66,7 +66,6 @@ def invoke_endpoint(
 
     retry_count = 0
     while retry_count < 3:
-        print(f"calling endpoint {endpoint_name} at time: ", time.time()-start)
         try:
             response = runtime_sagemaker_client.invoke_endpoint(
                 EndpointName=endpoint_name,
@@ -79,7 +78,7 @@ def invoke_endpoint(
             if error.response['Error']['Code'] == 'ThrottlingException':
                 logger.warning(f'Encountered Throttling Exception while calling endpoint {endpoint_name}. Retrying...')
                 retry_count += 1
-                time.sleep(15)
+                time.sleep(15*retry_count)
             else:
                 raise error
     raise RuntimeError(
@@ -113,8 +112,6 @@ def mask_explanation(
         masked token's respective index.
 
     """
-
-    print("masking explanation with explanation: ", explanation)
 
     shap_values = []
     prediction_tokens = []
@@ -223,32 +220,24 @@ def unmask_string(
     if not all_accepted_unmasks:
         all_accepted_unmasks = []
 
-
-    print("masked string 1: ", masked_string)
-
     # Replace [MASK] with UNK for all but the leftmost mask. We will
     # slowly replace each 
     for mask_n in mask_indices[1:]:
-        if " " in masked_string[mask_n]:
+        if masked_string[mask_n][-1] == " ":
             masked_string[mask_n] = "UNK "
         else:
             masked_string[mask_n] = "UNK"
     
-
-    print("masked string 2: ", masked_string)
     leftmost_mask = mask_indices[0]
-    if " " in masked_string[leftmost_mask]:
+    if masked_string[leftmost_mask][-1] == " ":
         masked_string[leftmost_mask] = "[MASK] "
     else:
         masked_string[leftmost_mask] = "[MASK]"
-    print("masked string 3:", masked_string)
-
 
     # Unmask leftmost mask
     unmask_request = {
         "inputs": "".join(masked_string)
     }
-    print("calling unmasking model on inputs: ", json.dumps(unmask_request), session_id)
     unmask_response = invoke_endpoint(
         request=unmask_request,
         endpoint_name=masked_language_model,
@@ -260,24 +249,34 @@ def unmask_string(
     unmasked_string_class_prediction = []
     unmasked_strings = []
 
-    print("unmask response: ", json.dumps(unmask_response), "len: ", len(unmask_response), session_id)
     for unmasked_label in unmask_response:
         unmasked_str = masked_string.copy()
 
-        
-        if " " in masked_string[leftmost_mask]:
+        # We need to add the space back to the token when inserting it
+        # back into the original string. Sometimes it doesn't have a
+        # space because it is followed by punctation.
+        if masked_string[leftmost_mask][-1] == " ":
             unmasked_str[leftmost_mask] = unmasked_label["token_str"] + " "
         else:
             unmasked_str[leftmost_mask] = unmasked_label["token_str"]
         
+        # Sometimes pieces of words are unmasked. In this case, there
+        # are two possible outcomes: 1. The predicted token is a
+        # different, separate word, and 2. The predicted token is a
+        # part of the word the begins in a prior token. This handles
+        # those two possible cases.
         if leftmost_mask>0:
-            if " " not in unmasked_str[leftmost_mask-1]:
-                print("prev token nlp: ", nlp(unmasked_str[leftmost_mask-1]))
-                prev_token_pos = nlp(unmasked_str[leftmost_mask-1])[0].pos_
-                print("prev token pos: ", prev_token_pos)
-                if prev_token_pos not in ["SYM", "PUNCT"]:
-                    unmasked_str[leftmost_mask-1] = unmasked_str[leftmost_mask-1] + " "
 
+            # If predicted token is a new, separate word (denoted by a
+            # lack of "##"" at the beginning of the token), we add a
+            # new space to the previous token
+            if unmasked_str[leftmost_mask-1][-1] != " " and unmasked_label["token_str"][:2] != "##":
+                unmasked_str[leftmost_mask-1] = unmasked_str[leftmost_mask-1] + " "
+            
+            # If the predicted token is a chunk of a word, simply
+            # remove the "##" at the beginning of the token.
+            elif unmasked_label["token_str"][:2] == "##":
+                unmasked_str[leftmost_mask] = unmasked_label["token_str"][2:]
 
         # Get score from classification model, which we will use to
         # find the best unmasks
@@ -307,8 +306,6 @@ def unmask_string(
             unmasked_string_class_prediction.pop(max_class_index)
             unmasked_strings.pop(max_class_index)
     
-    print("accepted unmasks: ", accepted_unmasks)
-
     if len(mask_indices) > 1:
         all_accepted_unmasks = []
         for accepted_unmasked_str_n in accepted_unmasks:
@@ -382,18 +379,14 @@ def handler(event, context):
         ["ADJ", "ADV", "AUX", "CCONJ", "INTJ", "PART"],
         )
     depth = event.get("depth", 1)
-    print("current depth: ", depth, session_id)
     
     # We remove apostrophes and set all case to lower to simplify
     # tokenization and masking
     input_text = re.sub("'", "", input_text)
-    input_text = input_text.lower()
 
     # Generate explanation using the classification model
     request = {"data": input_text, "explain": True}
-    print("generating explanation for input: ", json.dumps(request), session_id)
     endpoint_response = invoke_endpoint(request, endpoint_name=classification_model)
-    print("classification reponse: ", json.dumps(endpoint_response), session_id)
     
     label, score = get_predicted_label(endpoint_response)
     if label == desired_class and score>0.7:
@@ -401,8 +394,8 @@ def handler(event, context):
             "result": [input_text],
             "endpoint_response": endpoint_response,
             "message": (
-                "The model classified your input text as being the desired class,"
-                " so there is no need to provide a counterfactual."
+                "The model classified your input text as being the desired class"
+                f" {desired_class}, so there is no need to provide a counterfactual."
             ),
         }
 
@@ -465,8 +458,6 @@ def handler(event, context):
             ),
         }
 
-    print("unmasking string: ", masked_string, session_id)
-
     # Apply mlm to unmask the newly masked tokens
     unmasked_strings = unmask_string(
         masked_string=masked_string,
@@ -474,11 +465,9 @@ def handler(event, context):
         desired_class = desired_class,
         classification_model=classification_model,
         masked_language_model=masked_language_model,
-        top_k=max(3, int(6/len(mask_indices))),
+        top_k=max(2, int(6/len(mask_indices))),
         )
     
-    print("all unmasked strings: ", json.dumps(unmasked_strings), "len: ", len(unmasked_strings), session_id)
-
     # Only send back strong (score>0.7 in desired class)
     # counterfactuals
     labels, scores = [], []
@@ -530,8 +519,6 @@ def handler(event, context):
                         )
                     ]
 
-
-        print(f"Increasing depth from {depth} to {depth+1}", session_id)
         response = handler(
             event={
                 "input_text": string_to_send,
@@ -549,8 +536,8 @@ def handler(event, context):
 
     # If after three attempts at generating counterfactuals, return
     # whatever we have    
-    elif len(counterfactuals_to_keep) == 0 and depth == 3:
-        counterfactuals_to_keep = unmasked_strings,
+    elif len(counterfactuals_to_keep) == 0:
+        counterfactuals_to_keep = sample(unmasked_strings, k=3)
         message = (
             "Strong counterfactuals could not be generated."
             " Returning current counterfactuals."
@@ -558,7 +545,6 @@ def handler(event, context):
     else:
         message = "Counterfactuals successfully generated"
 
-    print("returning response")
     return {
         "result": counterfactuals_to_keep,
         "endpoint_response": endpoint_response,

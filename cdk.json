@@ -12,6 +12,7 @@
         "function_type": "from_docker_image",
         "environment_variable_name": "COUNTERFACTUAL_LAMBDA",
         "folder_name": "text_counterfactuals",
+        "timeout": 9,
         "policy_statements": [
           {
             "resources": ["*"],
