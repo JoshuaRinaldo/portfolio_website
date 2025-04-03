@@ -4,6 +4,7 @@ import base64
 import boto3
 import os
 import json
+import re
 
 lambda_client = boto3.client("lambda")
 
@@ -14,6 +15,9 @@ sentiment_classification_model = os.getenv("SENTIMENT_CLASSIFICATION_MODEL")
 
 greens = ["d6e6d5", "e1ffe0", "c8ffc7", "a8faa7", "90ff8f", "6bff69", "40ff3d", "07fc03"]
 reds = ["e6d5d5", "facfcf", "ffbaba", "ffa1a1", "ff8585", "ff6666", "ff3d3d", "ff1919"]
+
+if "counterfactual_response" not in st.session_state:
+    st.session_state.counterfactual_response = None
 
 def create_hex_css(explanation, desired_label, undesired_label):
     base_css = '<mark style="background-color: #{hex_color};">{text}</mark>'
@@ -131,7 +135,7 @@ with st.expander("Blog Post"):
     solution is nice, because it allows SageMaker Clarify like
     functionality without being tied to a specific platform, which
     makes local testing much easier and could be used in other cloud'
-    platforms.
+    platforms. However, this workaround leads to the next problem...
     
     **Problem: Serverless Endpoints are Small**
     On SageMaker, serverless endpoints have a maximum memory of `6GB`
@@ -153,35 +157,6 @@ with st.expander("Blog Post"):
     the time, but for complicated or difficult counterfactuals, it will
     sometimes begin to throttle. To handle this, a retry loop is built
     in to the endpoint invocation function.
-
-    **Problem: The pipeline does not flip the predicted class.** A
-    problem with masking and unmasking tokens in a string is that many
-    tokens can contribute to a predicted class. If we remove too many
-    tokens at once, the input begins to change in content completely.
-    The goal of counterfactuals is to find what minor changes can be
-    made to alter the class, so we should strive to minimize the
-    changes made to the original input. We must find a reasonable
-    number of tokens to mask so we can change the label without
-    completely altering the input. Too few masks can result in mangled
-    sentences that don't make sense or fail to flip the predicted
-    class, while too many masks can result in counterfactuals that
-    barely resemble the original input.
-
-    **Solution: When needed, run input text through multiple
-    mask-unmask cycles.** To avoid masking too many tokens at once, I
-    set a cap on the number of tokens that could be masked in a single
-    counterfactual generation attempt. This cap reduces the risk of the
-    mask-unmask process overzealously masking tokens and completely
-    changing the content of the input. Once the tokens have been
-    unmasked and a list of counterfactuals are generated, we only keep
-    counterfactuals where the predicted label (of our desired class)
-    has a score that is greater than 0.7. If none of the
-    counterfactuals have a score of 0.7, we select the highest scoring
-    counterfactual, then re-run the pipeline. The maximum depth of
-    recursion is set at 3 cycles to avoid an infinite loop, and if no
-    viable counterfactuals are generated, the output is returned with a
-    message explaining the failure. This recursive approach works well for
-    strange inputs where the pipeline would normally fail.
 
     **Problem: The counterfactuals completely change the content of the
     original input.** When generating counterfactuals at first, the
@@ -228,13 +203,18 @@ with st.expander("Blog Post"):
 
 st.markdown("## Try it Yourself")
 with st.expander("Try it yourself"):
-
     st.markdown("Enter a short phrase to generate counterfactuals for")
     input_text = st.text_input("")
     if len(input_text)>100:
         st.markdown(
             "Your input is too long. Your input must be fewer than 100 characters."
             )
+    elif len(re.sub("<.*>", "", input_text)) < len(input_text):
+             st.markdown(
+                 "You input was detected as potentially containing HTML. To avoid"
+                 " HTML injections, this field does not accept any input that is"
+                 " wrapped in HTML tags: `<>`"
+             )
 
     elif st.button("Press to generate counterfactuals"):
 
@@ -251,15 +231,31 @@ with st.expander("Try it yourself"):
                 }
             )
         )
-        payload = json.loads(response['Payload'].read())
+        st.session_state.counterfactual_response = json.loads(response['Payload'].read())
 
-        st.write(payload)
+        st.write(st.session_state.counterfactual_response)
 
-        explanation = payload["endpoint_response"]["explanation"]
-        display_text = create_hex_css(explanation=explanation, desired_label="positive", undesired_label="negative")
-        st.markdown(
-        display_text,
-        unsafe_allow_html=True,
+
+    if st.session_state.counterfactual_response:
+        explanation = st.session_state.counterfactual_response["endpoint_response"]["explanation"]
+        explanation_colored = create_hex_css(explanation=explanation, desired_label="positive", undesired_label="negative")
+
+        display_text = (
+            f"### {st.session_state.counterfactual_response['message']}\n"
+            f"### Your Input's Explanation:\n\n<center>\n\n#### {explanation_colored}\n\n</center>\n(green indicates"
+            " a contribution towards the desired label (positive), red indicates"
+            " a contribution towards the undesired label (negative))\n\n"
+            " ### Counterfactual Generation Response:\n"
         )
-        st.markdown(payload["result"])
 
+        counterfactual_table = "<center>\n\n| Counterfactual        | Label | Score |\n| :---------------- | :------: | :----: |\n"
+        for counterfactual_n in st.session_state.counterfactual_response["result"]:
+            counterfactual_table += f"| {counterfactual_n[0]} | {counterfactual_n[1]} | {round(counterfactual_n[2], 3)} |\n"
+        counterfactual_table += "\n</center>"
+        display_text += counterfactual_table
+
+        st.markdown(
+            display_text,
+            unsafe_allow_html=True,
+        )
+    
