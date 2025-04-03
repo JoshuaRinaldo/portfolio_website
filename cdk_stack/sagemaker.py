@@ -116,7 +116,6 @@ class SagemakerHuggingface(Construct):
             ) -> None:
         
         super().__init__(scope, construct_id)
-        endpoint_name = f"{endpoint_name}-{str(uuid.uuid4())}"[:62]
 
         if model_name is None and model_data_url is None:
             raise ValueError(
@@ -175,7 +174,7 @@ class SagemakerHuggingface(Construct):
             production_variants=[
                 sagemaker.CfnEndpointConfig.ProductionVariantProperty(
                     model_name=model.model_name,
-                    variant_name=str(uuid.uuid4()),
+                    variant_name=f"variant-{model.model_name}",
                     **production_variants,
                     serverless_config=sagemaker.CfnEndpointConfig.ServerlessConfigProperty(**serverless_config) if serverless_config else None,
                 )
@@ -194,7 +193,7 @@ class SagemakerHuggingface(Construct):
         model.node.add_dependency(role)
         endpoint_configuration.node.add_dependency(model)
         self.endpoint.node.add_dependency(endpoint_configuration)
-    
+
     def return_name(self):
         """
         Returns the endpoint name and arn.
@@ -253,7 +252,6 @@ class SagemakerFromImageAndModelData(Construct):
             ) -> None:
         
         super().__init__(scope, construct_id)
-        endpoint_name = f"{endpoint_name}-{str(uuid.uuid4())}"[:50]
 
         # Set endpoint role/permissions, define Sagemaker Model
         role = iam.Role(
@@ -276,7 +274,7 @@ class SagemakerFromImageAndModelData(Construct):
             self,
             f"model-{endpoint_name}",
             execution_role_arn=role.role_arn,
-            model_name=f'model-{endpoint_name}',
+            model_name=f"model-{endpoint_name}",
             primary_container=sagemaker.CfnModel.ContainerDefinitionProperty(
                 environment=container_environment,
                 image=f"{account}.dkr.ecr.{region}.amazonaws.com/{image_repo_name}:{image_tag}",
@@ -287,18 +285,18 @@ class SagemakerFromImageAndModelData(Construct):
         endpoint_configuration = sagemaker.CfnEndpointConfig(
             self,
             f"endpoint-config-{endpoint_name}",
-            endpoint_config_name=f'config-{endpoint_name}',
+            endpoint_config_name=f"config-{endpoint_name}",
             production_variants=[
                 sagemaker.CfnEndpointConfig.ProductionVariantProperty(
                     model_name=model.model_name,
-                    variant_name=model.model_name,
+                    variant_name=f"variant-{model.model_name}",
                     **production_variants,
                     serverless_config=sagemaker.CfnEndpointConfig.ServerlessConfigProperty(**serverless_config) if serverless_config else None,
                 )
             ],
         )
 
-        # Creates Real-Time Endpoint
+        # Creates Endpoint
         self.endpoint_id = f"endpoint-{endpoint_name}"
         self.endpoint = sagemaker.CfnEndpoint(
             self,

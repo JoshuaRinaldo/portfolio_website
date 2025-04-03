@@ -25,22 +25,22 @@
       {
         "endpoint_type": "huggingface",
         "environment_variable_name": "SENTIMENT_UNMASKING_MODEL",
-        "endpoint_name": "sentiment-mlm",
+        "endpoint_name": "sentiment-mlm-test",
         "serverless_config": {
           "memory_size_in_mb": 6144,
-          "max_concurrency": 1
+          "max_concurrency": 3
         },
         "model_data_url": "s3://model-files-jrinaldo/masked_language_modelling/distilbert_positive/model.tar.gz"
       },
       {
         "endpoint_type": "image_and_model_data",
         "environment_variable_name": "SENTIMENT_CLASSIFICATION_MODEL",
-        "endpoint_name": "sentiment-classifier",
+        "endpoint_name": "sentiment-classifier-test",
         "image_repo_name": "new-serverless-huggingface-seq2class",
         "image_tag": "x86_64",
         "serverless_config": {
           "memory_size_in_mb": 6144,
-          "max_concurrency": 1
+          "max_concurrency": 3
         },
         "container_environment": {
             "SERVERLESS": "True",
