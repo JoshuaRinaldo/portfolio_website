@@ -76,8 +76,11 @@ def invoke_endpoint(
             return result
         except botocore.exceptions.ClientError as error:
             if error.response['Error']['Code'] == 'ThrottlingException':
-                logger.warning(f'Encountered Throttling Exception while calling endpoint {endpoint_name}. Retrying...')
                 retry_count += 1
+                logger.warning(
+                    f"Encountered Throttling Exception while calling endpoint {endpoint_name}"
+                     f"Sleeping for {15*retry_count} seconds then retrying...')"
+                     )
                 time.sleep(15*retry_count)
             else:
                 raise error
@@ -265,12 +268,12 @@ def unmask_string(
         # different, separate word, and 2. The predicted token is a
         # part of the word the begins in a prior token. This handles
         # those two possible cases.
-        if leftmost_mask>0:
+        if leftmost_mask>1:
 
             # If predicted token is a new, separate word (denoted by a
             # lack of "##"" at the beginning of the token), we add a
-            # new space to the previous token
-            if unmasked_str[leftmost_mask-1][-1] != " " and unmasked_label["token_str"][:2] != "##":
+            # new space to the previous tokens
+            if " " not in unmasked_str[leftmost_mask-1] and unmasked_label["token_str"][:2] != "##":
                 unmasked_str[leftmost_mask-1] = unmasked_str[leftmost_mask-1] + " "
             
             # If the predicted token is a chunk of a word, simply
@@ -359,11 +362,6 @@ def handler(event, context):
         string is a tag from SpaCy's part-of-speech tagging. Tags in
         this list will be marked as acceptable to mask and replace.
 
-        depth (int): In special cases, we want to re-run the process
-        on an input text that has already gone through the
-        counterfactual generation process. In this case, we re-run the
-        process, but track depth to avoid excessive recursion.
-
     Returns:
         Union[str, List[str]]. A list of strings or an error message.
 
@@ -378,11 +376,11 @@ def handler(event, context):
         "unmasking_token_types",
         ["ADJ", "ADV", "AUX", "CCONJ", "INTJ", "PART"],
         )
-    depth = event.get("depth", 1)
     
     # We remove apostrophes and set all case to lower to simplify
     # tokenization and masking
-    input_text = re.sub("'", "", input_text)
+    input_text = re.sub("['`]", "", input_text)
+    input_text = input_text.lower()
 
     # Generate explanation using the classification model
     request = {"data": input_text, "explain": True}
@@ -391,11 +389,11 @@ def handler(event, context):
     label, score = get_predicted_label(endpoint_response)
     if label == desired_class and score>0.7:
         return {
-            "result": [input_text],
+            "result": [[input_text, label, score]],
             "endpoint_response": endpoint_response,
             "message": (
                 "The model classified your input text as being the desired class"
-                f" {desired_class}, so there is no need to provide a counterfactual."
+                f" {desired_class}, so there is no need to generate a counterfactual."
             ),
         }
 
@@ -450,7 +448,7 @@ def handler(event, context):
 
     if len(mask_indices) == 0:
         return {
-            "result": [input_text],
+            "result": [[input_text, label, score]],
             "endpoint_response": endpoint_response,
             "message": (
                 "The function failed to mask any input tokens, so no"
@@ -479,6 +477,7 @@ def handler(event, context):
         scores.append(score_n)
 
     counterfactuals_to_keep = []
+    bad_counterfactuals = []
     for n in range(len(unmasked_strings)):
         counterfactual = unmasked_strings[n]
         label = labels[n]
@@ -486,6 +485,8 @@ def handler(event, context):
 
         if label == desired_class and score > 0.7:
             counterfactuals_to_keep.append([counterfactual, label, score])
+        else:
+            bad_counterfactuals.append([counterfactual, label, score])
     
     # Sample 3 possible responses to return
     counterfactuals_to_keep = sample(
@@ -493,55 +494,12 @@ def handler(event, context):
         k=min(3, len(counterfactuals_to_keep)),
         )
 
-    # If there are no strong counterfactuals, we send the closest
-    # counterfactual back to the handler for another attempt. We start
-    # by finding the strongest in desired class string, if no strings
-    # are in the desired class, we settle for the lowest scoring not-in
-    # -class string.
-    if len(counterfactuals_to_keep) == 0 and depth<3:
-        slightly_positive = []
-        slightly_positive_scores = []
-        for n in range(len(unmasked_strings)):
-            label = labels[n]
-            if label == desired_class:
-                slightly_positive.append(unmasked_strings[n])
-                slightly_positive_scores.append(scores[n])
-        if len(slightly_positive)>0:
-            string_to_send = slightly_positive[
-                    slightly_positive_scores.index(
-                        max(slightly_positive_scores)
-                        )
-                    ]
-        else:
-            string_to_send = unmasked_strings[
-                    scores.index(
-                        min(scores)
-                        )
-                    ]
+    # # If after three attempts at generating counterfactuals, return
+    # # whatever we have
+    if len(counterfactuals_to_keep) == 0:
+        counterfactuals_to_keep = sample(bad_counterfactuals, k=3)
+        message = "Strong counterfactuals could not be generated."
 
-        response = handler(
-            event={
-                "input_text": string_to_send,
-                "classification_model": classification_model,
-                "masked_language_model": masked_language_model,
-                "desired_class": desired_class,
-                "undesired_class": undesired_class,
-                "unmasking_token_types": unmasking_token_types,
-                "depth": (depth+1)
-            },
-            context=context,
-            )
-        counterfactuals_to_keep = response["result"]
-        message = response["message"]
-
-    # If after three attempts at generating counterfactuals, return
-    # whatever we have    
-    elif len(counterfactuals_to_keep) == 0:
-        counterfactuals_to_keep = sample(unmasked_strings, k=3)
-        message = (
-            "Strong counterfactuals could not be generated."
-            " Returning current counterfactuals."
-        )
     else:
         message = "Counterfactuals successfully generated"
 
