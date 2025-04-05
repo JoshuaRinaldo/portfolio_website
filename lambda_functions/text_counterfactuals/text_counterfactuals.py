@@ -393,7 +393,8 @@ def handler(event, context):
             "endpoint_response": endpoint_response,
             "message": (
                 "The model classified your input text as being the desired class"
-                f" {desired_class}, so there is no need to generate a counterfactual."
+                f" ({desired_class}), so there is no need to generate a"
+                " counterfactual."
             ),
         }
 
