@@ -46,6 +46,21 @@
             "SERVERLESS": "True",
             "HUB_MODEL_NAME": "cardiffnlp/twitter-roberta-base-sentiment-latest"
         }
+      },
+      {
+        "endpoint_type": "image_and_model_data",
+        "environment_variable_name": "TOXICITY_CLASSIFICATION_MODEL",
+        "endpoint_name": "toxicity-classifier",
+        "image_repo_name": "new-serverless-huggingface-seq2class",
+        "image_tag": "x86_64",
+        "serverless_config": {
+          "memory_size_in_mb": 6144,
+          "max_concurrency": 3
+        },
+        "container_environment": {
+            "SERVERLESS": "True",
+            "HUB_MODEL_NAME": "s-nlp/roberta_toxicity_classifier"
+        }
       }
     ]
   }
