@@ -25,7 +25,7 @@ undergraduate physics degree, where I was introduced to data science
 and computational physics. I went on to complete a bachelor's of
 education, and then entered the workforce as an AI/ML engineer.
 
-Outside of work, I love to hiking and camping, tabletop roleplaying
+Outside of work, I love hiking and camping, tabletop roleplaying
 games, and Muay Thai.
 """)
 
