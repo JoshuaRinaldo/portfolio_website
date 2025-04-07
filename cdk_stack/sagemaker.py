@@ -1,7 +1,9 @@
-from aws_cdk import aws_iam as iam
-from aws_cdk import aws_sagemaker as sagemaker
+from aws_cdk import (
+    aws_iam as iam,
+    aws_sagemaker as sagemaker,
+    aws_ecr_assets as ecrassets,
+)
 from constructs import Construct
-import uuid
 from typing import Any
 
 # The region dict allows us to use the AWS region name to find the
@@ -180,10 +182,9 @@ class SagemakerHuggingface(Construct):
                 )
             ],
         )
-        self.endpoint_id = f"endpoint-{endpoint_name}"
         self.endpoint = sagemaker.CfnEndpoint(
             self,
-            self.endpoint_id,
+            f"endpoint-{endpoint_name}",
             endpoint_name=endpoint_name,
             endpoint_config_name=endpoint_configuration.endpoint_config_name,
         )
@@ -220,6 +221,17 @@ class SagemakerFromImageAndModelData(Construct):
 
         image_tag (str): The tag of the desired image.
 
+        dockerfile_folder (str): The folder name containing the
+        Dockerfile that can be used to build an image that can serve
+        the sagemaker model. The folder containing the Dockerfile must
+        be in the "sagemaker_endpoints" folder.
+
+        platform (str): The CPU platform/architecture to use if
+        building a docker image.
+
+        build_args (dict): Build args to pass if building the docker
+        image locally.
+
         model_data_bucket (str): The S3 bucket where the model data
         file is located.
 
@@ -245,6 +257,9 @@ class SagemakerFromImageAndModelData(Construct):
             endpoint_name: str,
             image_repo_name: str,
             image_tag: str,
+            dockerfile_folder: str,
+            platform: str = "amd64",
+            build_args: dict = {},
             model_data_bucket: str = None,
             serverless_config: dict = None,
             production_variants: dict[str, Any] = {},
@@ -269,7 +284,33 @@ class SagemakerFromImageAndModelData(Construct):
                     actions=["s3:GetObject", "s3:ListBucket"]
                 )
             )
-        
+
+        if image_repo_name and image_tag:
+            image_uri = f"{account}.dkr.ecr.{region}.amazonaws.com/{image_repo_name}:{image_tag}"
+        elif dockerfile_folder:
+            docker_image = ecrassets.DockerImageAsset(
+                self,
+                f"docker-image-{endpoint_name}",
+                build_args=build_args,
+
+                # Directory relative to where you execute cdk deploy
+                # contains a Dockerfile with build instructions
+                directory=f"sagemaker_endpoints/{dockerfile_folder}/.",
+                platform=(
+                    ecrassets.Platform.LINUX_ARM64 if platform == "arm64"
+                    else ecrassets.Platform.LINUX_AMD64
+                )
+            )
+            image_uri = docker_image.image_uri
+
+        else:
+            raise ValueError(
+                "To deploy a SageMaker endpoint of the type"
+                " SagemakerFromImageAndModelData, you must either"
+                " pull an image from an ECR repo by passing the"
+                " ecr_repo_name and tag variables, or build an image by"
+                " specifying the dockerfile_folder variable."
+            )
         model = sagemaker.CfnModel(
             self,
             f"model-{endpoint_name}",
@@ -277,7 +318,7 @@ class SagemakerFromImageAndModelData(Construct):
             model_name=f"model-{endpoint_name}",
             primary_container=sagemaker.CfnModel.ContainerDefinitionProperty(
                 environment=container_environment,
-                image=f"{account}.dkr.ecr.{region}.amazonaws.com/{image_repo_name}:{image_tag}",
+                image=image_uri,
             ),
         )
 
@@ -297,15 +338,15 @@ class SagemakerFromImageAndModelData(Construct):
         )
 
         # Creates Endpoint
-        self.endpoint_id = f"endpoint-{endpoint_name}"
         self.endpoint = sagemaker.CfnEndpoint(
             self,
-            self.endpoint_id,
+            f"endpoint-{endpoint_name}",
             endpoint_name=endpoint_name,
             endpoint_config_name=endpoint_configuration.endpoint_config_name,
         )
 
-        # adds depends on for different resources
+        # Add dependencies so the endpoint isn't created before the
+        # model or endpoint config
         model.node.add_dependency(role)
         endpoint_configuration.node.add_dependency(model)
         self.endpoint.node.add_dependency(endpoint_configuration)

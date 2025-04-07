@@ -15,11 +15,6 @@ class LambdaFunctionFromDockerImage(Construct):
     Args:
         construct_id (str): The function's construct id.
 
-        lambda_folder (str): The folder name of the lambda function.
-        The lambda folder must be in the lambda_functions folder. This
-        argument is only used if the docker image is being built during
-        deployment.
-
         platform (str): The CPU platform/architecture to use.
 
         ecr_repo (str): The name of the ECR repo containing the docker
@@ -28,6 +23,11 @@ class LambdaFunctionFromDockerImage(Construct):
 
         tag (str): The tag of the docker image in the ECR repo. Must be
         a valid tag in the ECR repo passed in the ecr_repo argument.
+
+        lambda_folder (str): The folder name of the lambda function.
+        The lambda folder must be in the lambda_functions folder. This
+        argument is only used if the docker image is being built during
+        deployment.        
 
         timeout (int): The time (in minutes) before the lambda function
         times out.
@@ -55,10 +55,10 @@ class LambdaFunctionFromDockerImage(Construct):
             self,
             scope: Construct,
             construct_id: str,
-            lambda_folder: str=None,
-            platform: str = None,
+            platform: str = "arm64",
             ecr_repo: str = None,
             tag: str = None,
+            lambda_folder: str=None,
             timeout: int = 5,
             memory_size: int = 512,
             policy_statements: List[dict[str, List[str]]] = [],
