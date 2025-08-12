@@ -3,7 +3,7 @@
   "context": {
   	"account": "324014232528",
     "region": "us-east-1",
-    "environment": "test",
+    "environment": "prod",
     "hosted_zone_id": "Z06894253TINLH6L5UR69",
     "domain_name": "joshrinaldo.com",
     "platform": "arm64",
