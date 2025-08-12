@@ -27,5 +27,8 @@ education, and then entered the workforce as an AI/ML engineer.
 
 Outside of work, I love hiking and camping, tabletop roleplaying
 games, and Muay Thai.
+
+Interested in how this page was deployed? Please see the
+[Github reposiotry](https://github.com/JoshuaRinaldo/portfolio_website)
 """)
 
