@@ -362,6 +362,14 @@ def handler(event, context):
         string is a tag from SpaCy's part-of-speech tagging. Tags in
         this list will be marked as acceptable to mask and replace.
 
+        ping (bool): Whether this call is a ping to the lambda
+        function. If True, the lambda will invoke both the
+        classification model and masked language model, then
+        return a dict explaining that the ping was successful. This
+        can be used to check the health of the lambda and its dependent
+        models or to keep the lambda and its dependent models warm,
+        minimizing latency related to cold-starts.
+
     Returns:
         Union[str, List[str]]. A list of strings or an error message.
 
@@ -376,6 +384,24 @@ def handler(event, context):
         "unmasking_token_types",
         ["ADJ", "ADV", "AUX", "CCONJ", "INTJ", "PART"],
         )
+    
+    # Ping the models if ping is passed as True
+    if event.get("ping", False):
+        endpoint_response = invoke_endpoint(
+            request={"data": input_text, "explain": True},
+            endpoint_name=classification_model,
+            )
+        
+        unmask_response = invoke_endpoint(
+        request="I am having a [MASK] day",
+        endpoint_name=masked_language_model,
+        )
+        
+        return {
+        "result": [],
+        "endpoint_response": endpoint_response,
+        "message": "Ping successful"
+        }
     
     # We remove apostrophes and set all case to lower to simplify
     # tokenization and masking

@@ -1,10 +1,13 @@
 import streamlit as st
 
+import asyncio
 import base64
 import boto3
 import os
 import json
 import re
+import time
+import threading
 
 lambda_client = boto3.client("lambda")
 
@@ -12,6 +15,7 @@ counterfactual_lambda = os.getenv("COUNTERFACTUAL_LAMBDA")
 sentiment_unmasking_model = os.getenv("SENTIMENT_UNMASKING_MODEL")
 sentiment_classification_model = os.getenv("SENTIMENT_CLASSIFICATION_MODEL")
 toxicity_classification_model = os.getenv("TOXICITY_CLASSIFICATION_MODEL")
+
 
 classification_models = {
     "sentiment": {
@@ -25,6 +29,37 @@ classification_models = {
         "undesired_label": "toxic",
         },
 }
+
+def ping_lambda(counterfactual_endpoint_dict):
+    """
+    Pings a lambda. This is used to keep lambdas warm and mitigate
+    cold-starts
+    """
+    try:
+        lambda_client.invoke(
+            FunctionName=counterfactual_lambda,
+            InvocationType='Event',
+            Payload=json.dumps({
+                "input_text": "This is a ping",
+                "classification_model": counterfactual_endpoint_dict["model"],
+                "masked_language_model": sentiment_unmasking_model,
+                "desired_class": counterfactual_endpoint_dict["desired_label"],
+                "undesired_class": counterfactual_endpoint_dict["undesired_label"],
+                "ping": True,
+            })
+        )
+    except Exception as e:
+        print(f"Lambda ping failed: {e}")
+
+def ping_all_lambdas_background():
+    for endpoint in classification_models.values():
+        threading.Thread(target=ping_lambda, args=(endpoint,), daemon=True).start()
+
+# Ping lambdas at refresh and every reload that occurs >300 ms after
+# last ping
+if 'last_ping_time' not in st.session_state or time.time() - st.session_state['last_ping_time'] > 300:
+    ping_all_lambdas_background()
+    st.session_state['last_ping_time'] = time.time()
 
 if "display_text" not in st.session_state:
     st.session_state.display_text = None
@@ -134,6 +169,13 @@ with st.expander("Try it yourself"):
                 " wrapped in HTML tags: `<>`"
             )
     elif st.button("Press to generate counterfactuals"):
+
+        st.markdown(
+            "Counterfactual generation is being done serverlessly and"
+            " generating counterfactuals is computationally expensive."
+            " You may experience latency, especially if this is your"
+            " first invocation."
+        )
 
         desired_label = classification_models[st.session_state.selected_model]["desired_label"]
         undesired_label = classification_models[st.session_state.selected_model]["undesired_label"]
