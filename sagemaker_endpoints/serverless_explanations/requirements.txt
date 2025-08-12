@@ -1,0 +1,7 @@
+flask
+gunicorn
+boto3
+transformers
+accelerate
+torch
+shap

@@ -1,0 +1,65 @@
+{
+  "app": "python3 app.py",
+  "context": {
+  	"account": "324014232528",
+    "region": "us-east-1",
+    "environment": "prod",
+    "hosted_zone_id": "Z06894253TINLH6L5UR69",
+    "domain_name": "joshrinaldo.com",
+    "platform": "arm64",
+    "lambda_functions": [
+      {
+        "function_type": "from_docker_image",
+        "environment_variable_name": "COUNTERFACTUAL_LAMBDA",
+        "folder_name": "text_counterfactuals",
+        "timeout": 9,
+        "policy_statements": [
+          {
+            "resources": ["*"],
+            "actions": ["sagemaker:InvokeEndpoint"]
+          }
+        ]
+      }
+    ],
+    "sagemaker_endpoints": [
+      {
+        "endpoint_type": "huggingface",
+        "environment_variable_name": "SENTIMENT_UNMASKING_MODEL",
+        "endpoint_name": "sentiment-mlm",
+        "serverless_config": {
+          "memory_size_in_mb": 6144,
+          "max_concurrency": 3
+        },
+        "model_data_url": "s3://model-files-jrinaldo/masked_language_modelling/distilbert_positive/model.tar.gz"
+      },
+      {
+        "endpoint_type": "image_and_model_data",
+        "environment_variable_name": "SENTIMENT_CLASSIFICATION_MODEL",
+        "endpoint_name": "sentiment-classifier",
+        "dockerfile_folder": "serverless_explanations",
+        "serverless_config": {
+          "memory_size_in_mb": 6144,
+          "max_concurrency": 3
+        },
+        "container_environment": {
+            "SERVERLESS": "True",
+            "HUB_MODEL_NAME": "cardiffnlp/twitter-roberta-base-sentiment-latest"
+        }
+      },
+      {
+        "endpoint_type": "image_and_model_data",
+        "environment_variable_name": "TOXICITY_CLASSIFICATION_MODEL",
+        "endpoint_name": "toxicity-classifier-test",
+        "dockerfile_folder": "serverless_explanations",
+        "serverless_config": {
+          "memory_size_in_mb": 6144,
+          "max_concurrency": 3
+        },
+        "container_environment": {
+            "SERVERLESS": "True",
+            "HUB_MODEL_NAME": "s-nlp/roberta_toxicity_classifier"
+        }
+      }
+    ]
+  }
+}
