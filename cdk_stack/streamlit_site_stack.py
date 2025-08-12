@@ -244,7 +244,7 @@ class StreamlitSite(Stack):
         route53.CnameRecord(
             self,
             f"{environment}-cname-record",
-            record_name=domain_name,
+            record_name=f"prod.{domain_name}" if environment == "prod" else domain_name,
             zone=hosted_zone,
             domain_name=domain_name,
         )
