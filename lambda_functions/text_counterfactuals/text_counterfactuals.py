@@ -393,7 +393,9 @@ def handler(event, context):
             )
         
         unmask_response = invoke_endpoint(
-        request="I am having a [MASK] day",
+        request={
+            "inputs": "I am having a [MASK] day",
+        },
         endpoint_name=masked_language_model,
         )
         
