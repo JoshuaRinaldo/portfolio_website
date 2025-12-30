@@ -10,3 +10,6 @@ __pycache__
 cdk.out
 cdk.context.json
 .DS_Store
+
+# Generated config file (created during CDK deployment)
+website/js/config.js

@@ -116,31 +116,6 @@ name is included in the deployment's domain name.
 
  - `domain_name` `(str)`: The domain name of the website.
 
- - `platform` `(str)`: The cpu platform/architecture to run the
-   streamlit app on. Can either be `"arm64"` or `"amd64"`. Defaults to
-   `"amd64"`, but please take note of your local machine's
-   compatibility when modifying this argument.
-
- - `streamlit_environment_variables` `(Dict[str, Any])`: Extra
-   environment variables to pass to the streamlit app. By default
-   this variable initializes as empty and is filled with the names
-   of external resources (lambda functions and sagemaker
-   endpoints).
-
- - `ecs_policy_statements` `(List[Dict[str, List[str]]])`: A list of
-   extra policy statements to add to the streamlit app. By
-   default, the app is allowed to invoke SageMaker endpoints and
-   Lambda functions. If additional permissions are required, they
-   are added through this argument. Structure additional policy
-   statements as follows:
-
-   ```
-   {
-      "resources": ["the resources to include in the policy"],
-      "actions": ["the actions to include in the policy"]
-   }
-   ```
-
 
 ## [`sagemaker.py`](sagemaker.py)
 

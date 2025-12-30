@@ -10,9 +10,10 @@
     "lambda_functions": [
       {
         "function_type": "from_docker_image",
-        "environment_variable_name": "COUNTERFACTUAL_LAMBDA",
-        "folder_name": "text_counterfactuals",
-        "timeout": 9,
+        "environment_variable_name": "INVOKE_MODEL_LAMBDA",
+        "folder_name": "invoke_model",
+        "route_path": "invoke",
+        "timeout": 1,
         "policy_statements": [
           {
             "resources": ["*"],
@@ -21,16 +22,52 @@
         ]
       }
     ],
+    "classification_models": {
+      "sentiment": {
+        "desired_label": "positive",
+        "undesired_label": "negative"
+      },
+      "toxicity": {
+        "desired_label": "neutral",
+        "undesired_label": "toxic"
+      },
+      "malicious_url": {
+        "desired_label": "BENIGN",
+        "undesired_label": "MALWARE"
+      },
+      "grammar": {
+        "desired_label": "OK",
+        "undesired_label": "GRAMMAR_ERROR"
+      }
+    },
     "sagemaker_endpoints": [
       {
-        "endpoint_type": "huggingface",
-        "environment_variable_name": "SENTIMENT_UNMASKING_MODEL",
-        "endpoint_name": "sentiment-mlm",
+        "endpoint_type": "image_and_model_data",
+        "environment_variable_name": "GRAMMAR_ERROR_CLASSIFICATION_MODEL",
+        "endpoint_name": "grammar-error-classifier",
+        "dockerfile_folder": "serverless_explanations",
         "serverless_config": {
           "memory_size_in_mb": 6144,
-          "max_concurrency": 3
+          "max_concurrency": 1
         },
-        "model_data_url": "s3://model-files-jrinaldo/masked_language_modelling/distilbert_positive/model.tar.gz"
+        "container_environment": {
+            "SERVERLESS": "True",
+            "HUB_MODEL_NAME": "nikolasmoya/c4-binary-english-grammar-checker"
+        }
+      },
+      {
+        "endpoint_type": "image_and_model_data",
+        "environment_variable_name": "MALICIOUS_URL_CLASSIFICATION_MODEL",
+        "endpoint_name": "malicious-url-classifier",
+        "dockerfile_folder": "serverless_explanations",
+        "serverless_config": {
+          "memory_size_in_mb": 6144,
+          "max_concurrency": 1
+        },
+        "container_environment": {
+            "SERVERLESS": "True",
+            "HUB_MODEL_NAME": "kmack/malicious-url-detection"
+        }
       },
       {
         "endpoint_type": "image_and_model_data",
@@ -39,7 +76,7 @@
         "dockerfile_folder": "serverless_explanations",
         "serverless_config": {
           "memory_size_in_mb": 6144,
-          "max_concurrency": 3
+          "max_concurrency": 1
         },
         "container_environment": {
             "SERVERLESS": "True",
@@ -49,11 +86,11 @@
       {
         "endpoint_type": "image_and_model_data",
         "environment_variable_name": "TOXICITY_CLASSIFICATION_MODEL",
-        "endpoint_name": "toxicity-classifier-test",
+        "endpoint_name": "toxicity-classifier",
         "dockerfile_folder": "serverless_explanations",
         "serverless_config": {
           "memory_size_in_mb": 6144,
-          "max_concurrency": 3
+          "max_concurrency": 1
         },
         "container_environment": {
             "SERVERLESS": "True",

@@ -15,12 +15,22 @@ session_id = str(uuid.uuid4())[:6]
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger()
 
+# spacy model is lazy-loaded to prevent timeout during initialization
 import spacy
-nlp = spacy.load("en_core_web_sm")
+nlp = None
 
 start = time.time()
 
 runtime_sagemaker_client = boto3.client(service_name='sagemaker-runtime')
+
+def get_nlp():
+    """Lazy load spaCy model on first invocation."""
+    global nlp
+    if nlp is None:
+        logger.info("Loading spaCy model (first invocation)...")
+        nlp = spacy.load("en_core_web_sm")
+        logger.info("spaCy model loaded successfully")
+    return nlp
 
 def get_predicted_label(endpoint_response):
     """
@@ -340,6 +350,8 @@ def handler(event, context):
     masked with the placeholder "[MASK]". The tokens are then unmasked
     using the masked language model.
 
+    This handler supports both API Gateway (HTTP) and direct Lambda invocations.
+
     Args:
         input_text (str): The starting text which will have
         counterfactuals generated based on it.
@@ -374,19 +386,64 @@ def handler(event, context):
         Union[str, List[str]]. A list of strings or an error message.
 
     """
+    # Detect if this is an API Gateway event and extract body
+    if "body" in event:
+        # API Gateway event
+        try:
+            body = json.loads(event["body"]) if isinstance(event["body"], str) else event["body"]
+        except json.JSONDecodeError:
+            return {
+                "statusCode": 400,
+                "headers": {
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Headers": "Content-Type",
+                    "Access-Control-Allow-Methods": "POST, OPTIONS"
+                },
+                "body": json.dumps({"error": "Invalid JSON in request body"})
+            }
+    else:
+        # Direct Lambda invocation
+        body = event
 
-    input_text = event["input_text"]
-    classification_model = event["classification_model"]
-    masked_language_model = event["masked_language_model"]
-    desired_class = event["desired_class"]
-    undesired_class = event["undesired_class"]
-    unmasking_token_types = event.get(
+    input_text = body["input_text"]
+    classification_model = body["classification_model"]
+    masked_language_model = body["masked_language_model"]
+    desired_class = body["desired_class"]
+    undesired_class = body["undesired_class"]
+    unmasking_token_types = body.get(
         "unmasking_token_types",
         ["ADJ", "ADV", "AUX", "CCONJ", "INTJ", "PART"],
         )
-    
+
+    def format_response(data, status_code=200):
+        """Format response for API Gateway or direct Lambda invocation.
+
+        Args:
+            data: Response payload dictionary
+            status_code: HTTP status code (for API Gateway)
+
+        Returns:
+            API Gateway formatted response or raw data
+        """
+        if "body" in event:
+            # API Gateway response
+            return {
+                "statusCode": status_code,
+                "headers": {
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Headers": "Content-Type",
+                    "Access-Control-Allow-Methods": "POST, OPTIONS"
+                },
+                "body": json.dumps(data)
+            }
+        else:
+            # Direct Lambda invocation response
+            return data
+
     # Ping the models if ping is passed as True
-    if event.get("ping", False):
+    if body.get("ping", False):
         endpoint_response = invoke_endpoint(
             request={"data": input_text, "explain": True},
             endpoint_name=classification_model,
@@ -398,12 +455,12 @@ def handler(event, context):
         },
         endpoint_name=masked_language_model,
         )
-        
-        return {
+
+        return format_response({
         "result": [],
         "endpoint_response": endpoint_response,
         "message": "Ping successful"
-        }
+        })
     
     # We remove apostrophes and set all case to lower to simplify
     # tokenization and masking
@@ -416,7 +473,7 @@ def handler(event, context):
     
     label, score = get_predicted_label(endpoint_response)
     if label == desired_class and score>0.7:
-        return {
+        return format_response({
             "result": [[input_text, label, score]],
             "endpoint_response": endpoint_response,
             "message": (
@@ -424,7 +481,7 @@ def handler(event, context):
                 f" ({desired_class}), so there is no need to generate a"
                 " counterfactual."
             ),
-        }
+        })
 
     tokens = []
     for token_n in endpoint_response["explanation"]:
@@ -432,14 +489,15 @@ def handler(event, context):
 
     tokens_text = []
     tokens_pos = []
+    nlp_model = get_nlp()  # Lazy load spaCy model
     for token_n in tokens:
-        doc = nlp(token_n)
+        doc = nlp_model(token_n)
         part_of_speech = []
         tokens = []
         for token in doc:
             part_of_speech.append(token.pos_)
             tokens.append(token.text)
-        
+
         tokens_text.append(tokens[0] if len(tokens)>0 else "")
         tokens_pos.append(part_of_speech[0] if len(part_of_speech)>0 else "X")
     
@@ -476,14 +534,14 @@ def handler(event, context):
         )
 
     if len(mask_indices) == 0:
-        return {
+        return format_response({
             "result": [[input_text, label, score]],
             "endpoint_response": endpoint_response,
             "message": (
                 "The function failed to mask any input tokens, so no"
                 " counterfactuals can be provided."
             ),
-        }
+        })
 
     # Apply mlm to unmask the newly masked tokens
     unmasked_strings = unmask_string(
@@ -532,8 +590,8 @@ def handler(event, context):
     else:
         message = "Counterfactuals successfully generated"
 
-    return {
+    return format_response({
         "result": counterfactuals_to_keep,
         "endpoint_response": endpoint_response,
         "message": message
-        }
+        })
