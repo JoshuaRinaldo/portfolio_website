@@ -1,20 +1,9 @@
 # Lambda Functions
 
-This folder contains lambda functions that are deployed in the `cdk`
-stack. To add lambda functions to a deployment, create a new folder,
-place the code in the folder, and add the lambda function to `cdk.json`
-under the `lambda_functions` list.
+This folder contains Lambda functions that are deployed in the CDK stack. To add Lambda functions to a deployment, create a new folder, place the code in the folder, and add the Lambda function to `cdk.json` under the `lambda_functions` list.
 
-## [`Text Counterfactuals`](text_counterfactuals/text_counterfactuals.py)
-The [`text_counterfactuals`](text_counterfactuals/text_counterfactuals.py)
-lambda function uses Explainable AI (XAI) and a masked language model
-to generate text classification counterfactuals for short strings. 
+## [`invoke_model`](invoke_model/invoke_model.py)
 
-The function generates counterfactuals by replacing tokens to move strings
-away from the `undesired_class` and towards the `desired_class`. To
-do this, the function uses a classification model that can provide
-explanations using the [SHAP](https://shap.readthedocs.io/en/latest/index.html)
-library to determine which tokens had the most impact on the score. The
-function then masks those tokens and uses a masked language model to
-predict replacement tokens. Preferrably, the masked language model is
-finetuned on text examples that are in the `desired_class`.
+The [`invoke_model`](invoke_model/invoke_model.py) Lambda function provides a generic interface for invoking SageMaker endpoints. It accepts an endpoint name and payload, invokes the specified SageMaker endpoint, and returns the raw response. This allows the frontend to call any SageMaker model without needing separate Lambda functions for each model type.
+
+The function handles both API Gateway events and direct Lambda invocations, making it flexible for various use cases.

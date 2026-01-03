@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photo Gallery - Joshua Rinaldo</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/glightbox/dist/css/glightbox.min.css">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="container">
+            <a href="index.html" class="nav-link">Home</a>
+            <a href="explanations.html" class="nav-link">Model Explanations</a>
+            <a href="counterfactuals.html" class="nav-link">Text Counterfactuals</a>
+            <a href="gallery.html" class="nav-link active">Gallery</a>
+        </div>
+    </nav>
+
+    <main class="gallery-page">
+        <header class="page-header">
+            <h1 class="page-title">Photo Gallery</h1>
+            <p class="page-description">A collection of moments captured through my lens</p>
+        </header>
+
+        <div class="gallery-container">
+            <div id="loading" class="loading-spinner">
+                <div class="spinner"></div>
+                <p>Loading photos...</p>
+            </div>
+
+            <div id="photo-grid" class="photo-grid"></div>
+
+            <div id="load-more-trigger" class="load-more-trigger"></div>
+        </div>
+    </main>
+
+    <footer>
+        <p>&copy; 2024 Joshua Rinaldo. All rights reserved.</p>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/gh/mcstudios/glightbox/dist/js/glightbox.min.js"></script>
+    <script src="js/gallery.js"></script>
+</body>
+</html>

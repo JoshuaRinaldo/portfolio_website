@@ -1,12 +1,11 @@
 from aws_cdk import (
     aws_ecr_assets as ecrassets,
-    aws_ecs as ecs,
     aws_iam as iam,
     aws_lambda as _lambda,
     Duration,
 )
 from constructs import Construct
-from typing import List
+from typing import List, Dict
 
 class LambdaFunctionFromDockerImage(Construct):
     """
@@ -47,6 +46,10 @@ class LambdaFunctionFromDockerImage(Construct):
         }
         ```
 
+        environment (Dict[str, str]): A dictionary containing key/value
+        pairs that map environment variable names to their respective
+        values.
+
     Returns:
         None
 
@@ -62,6 +65,7 @@ class LambdaFunctionFromDockerImage(Construct):
             timeout: int = 5,
             memory_size: int = 512,
             policy_statements: List[dict[str, List[str]]] = [],
+            environment: Dict[str, str] = {}
             ) -> None:
         
         super().__init__(scope, construct_id)
@@ -94,13 +98,14 @@ class LambdaFunctionFromDockerImage(Construct):
 
         self.lambda_function = _lambda.DockerImageFunction(
             scope=self,
-            id="ExampleDockerLambda",
+            id=construct_id,
             role=lambda_role,
             timeout=Duration.minutes(timeout),
             code=lambda_docker_image,
             memory_size=memory_size,
+            environment=environment,
             architecture=(
-            _lambda.Architecture.ARM64 if platform == "arm64"
+            _lambda.Architecture.ARM_64 if platform == "arm64"
             else _lambda.Architecture.X86_64
         )
         )

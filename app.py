@@ -5,13 +5,15 @@ import json
 from aws_cdk import App, Environment
 
 from cdk_stack.static_site_stack import StaticSite
-# from cdk_stack.streamlit_site_stack import StreamlitSite  # Old stack - kept for reference
+from cdk_stack.photo_gallery_stack import PhotoGalleryStack
 
 with open("cdk.json", "r") as file:
     context = json.load(file)["context"]
 
 account = context["account"]
 region = context["region"]
+env = context["environment"]
+
 
 app = App()
 
@@ -22,11 +24,11 @@ StaticSite(
     env=Environment(account=account, region=region)
 )
 
-# Old Streamlit stack - commented out, remove after successful migration
-# StreamlitSite(
-#     app,
-#     "StreamlitSite",
-#     env=Environment(account=account, region=region)
-# )
+photo_gallery_stack = PhotoGalleryStack(
+    app,
+    f"photo-gallery-{env}",
+    env=Environment(account=account, region=region)
+)
+
 
 app.synth()

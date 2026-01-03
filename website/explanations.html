@@ -12,6 +12,7 @@
             <a href="index.html" class="nav-link">Home</a>
             <a href="explanations.html" class="nav-link active">Model Explanations</a>
             <a href="counterfactuals.html" class="nav-link">Text Counterfactuals</a>
+            <a href="gallery.html" class="nav-link">Gallery</a>
         </div>
     </nav>
 
@@ -24,52 +25,55 @@
             <p>Words highlighted in <mark style="background-color: #90ff8f;">green</mark> contribute toward the positive/neutral class, while words in <mark style="background-color: #ff8585;">red</mark> contribute toward the negative/toxic class.</p>
         </section>
 
-        <section class="try-it">
-            <div class="form-container">
-                <form id="explanation-form">
-                    <div class="form-group">
-                        <label for="input-text">Enter Text:</label>
-                        <input type="text" id="input-text" name="input-text" maxlength="100" placeholder="e.g., I love this amazing product!" required>
+        <div class="two-column-layout">
+            <section class="try-it">
+                <h2>Try It Out</h2>
+                <div class="form-container">
+                    <form id="explanation-form">
+                        <div class="form-group">
+                            <label for="input-text">Enter Text:</label>
+                            <input type="text" id="input-text" name="input-text" maxlength="100" placeholder="e.g., I love this amazing product!" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="model-select">Model:</label>
+                            <select id="model-select" name="model">
+                                <option value="sentiment">Sentiment Analysis</option>
+                                <option value="toxicity">Toxicity Detection</option>
+                                <option value="malicious_url">Malicious URL Detection</option>
+                                <option value="grammar_error">Grammar Error Detection</option>
+                            </select>
+                            <p class="help-text">Choose which classification model to use for analysis.</p>
+                        </div>
+
+                        <button type="submit" id="submit-btn" class="submit-btn">Generate Explanation</button>
+                    </form>
+
+                    <div id="error-message" class="error-message" style="display: none;"></div>
+                    <div id="loading-message" class="loading-message" style="display: none;">
+                        <p>Generating explanation...</p>
+                        <div class="spinner"></div>
                     </div>
-
-                    <div class="form-group">
-                        <label for="model-select">Model:</label>
-                        <select id="model-select" name="model">
-                            <option value="sentiment">Sentiment Analysis</option>
-                            <option value="toxicity">Toxicity Detection</option>
-                            <option value="malicious_url">Malicious URL Detection</option>
-                            <option value="grammar">Grammar Error Detection</option>
-                        </select>
-                        <p class="help-text">Choose which classification model to use for analysis.</p>
-                    </div>
-
-                    <button type="submit" id="submit-btn" class="submit-btn">Generate Explanation</button>
-                </form>
-
-                <div id="error-message" class="error-message" style="display: none;"></div>
-                <div id="loading-message" class="loading-message" style="display: none;">
-                    <p>Generating explanation...</p>
-                    <div class="spinner"></div>
+                    <div id="results" class="results" style="display: none;"></div>
                 </div>
-                <div id="results" class="results" style="display: none;"></div>
-            </div>
-        </section>
+            </section>
 
-        <section class="info">
-            <h2>How It Works</h2>
-            <p>This demo uses SHAP values to quantify each word's contribution to the model's prediction. The models are deployed as serverless endpoints on AWS SageMaker, with custom Docker containers that generate explanations in real-time.</p>
+            <section class="info">
+                <h2>How It Works</h2>
+                <p>This demo uses SHAP values to quantify each word's contribution to the model's prediction. The models are deployed as serverless endpoints on AWS SageMaker, with custom Docker containers that generate explanations in real-time.</p>
 
-            <h3>Technical Details</h3>
-            <ul>
-                <li><strong>Models:</strong> Fine-tuned transformer models (RoBERTa, DistilBERT) for text classification</li>
-                <li><strong>Explainability:</strong> SHAP (SHapley Additive exPlanations) for model interpretability</li>
-                <li><strong>Infrastructure:</strong> AWS SageMaker serverless endpoints with custom Docker containers</li>
-                <li><strong>Frontend:</strong> Static HTML/CSS/JavaScript served via CloudFront</li>
-            </ul>
+                <h3>Technical Details</h3>
+                <ul>
+                    <li><strong>Models:</strong> Fine-tuned transformer models (RoBERTa, DistilBERT) for text classification</li>
+                    <li><strong>Explainability:</strong> SHAP (SHapley Additive exPlanations) for model interpretability</li>
+                    <li><strong>Infrastructure:</strong> AWS SageMaker serverless endpoints with custom Docker containers</li>
+                    <li><strong>Frontend:</strong> Static HTML/CSS/JavaScript served via CloudFront</li>
+                </ul>
 
-            <h3>Learn More</h3>
-            <p>For more details about text counterfactual generation and the technical challenges involved, check out my <a href="counterfactuals.html">Text Counterfactuals blog post</a>.</p>
-        </section>
+                <h3>Learn More</h3>
+                <p>For more details about text counterfactual generation and the technical challenges involved, check out my <a href="counterfactuals.html">Text Counterfactuals blog post</a>.</p>
+            </section>
+        </div>
     </main>
 
     <footer>
