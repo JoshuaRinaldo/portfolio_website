@@ -77,11 +77,238 @@ function loadMorePhotos() {
     lightbox = GLightbox({
         touchNavigation: true,
         loop: true,
-        autoplayVideos: true
+        autoplayVideos: true,
+        onOpen: () => {
+            createInfoPanel();
+            // Wait for GLightbox to fully initialize the slide
+            setTimeout(() => {
+                updateInfoPanel();
+            }, 100);
+        },
+        onClose: () => {
+            removeInfoPanel();
+        }
+    });
+
+    // Add event listener for slide changes using GLightbox's event system
+    lightbox.on('slide_changed', () => {
+        console.log('Slide changed, updating info panel...');
+        setTimeout(() => {
+            updateInfoPanel();
+        }, 100);
     });
 
     isLoading = false;
     loadingSpinner.style.display = 'none';
+}
+
+// Create info panel for lightbox
+function createInfoPanel() {
+    // Create info button
+    const infoButton = document.createElement('div');
+    infoButton.className = 'ginfo-button';
+    infoButton.innerHTML = 'i';
+    infoButton.onclick = toggleInfoPanel;
+    document.body.appendChild(infoButton);
+
+    // Create info panel
+    const infoPanel = document.createElement('div');
+    infoPanel.className = 'ginfo-panel';
+    infoPanel.id = 'photo-info-panel';
+    document.body.appendChild(infoPanel);
+
+    updateInfoPanel();
+}
+
+// Remove info panel
+function removeInfoPanel() {
+    const button = document.querySelector('.ginfo-button');
+    const panel = document.getElementById('photo-info-panel');
+    if (button) button.remove();
+    if (panel) panel.remove();
+}
+
+// Toggle info panel
+function toggleInfoPanel() {
+    const panel = document.getElementById('photo-info-panel');
+    if (panel) {
+        panel.classList.toggle('active');
+    }
+}
+
+// Update info panel content
+function updateInfoPanel() {
+    const panel = document.getElementById('photo-info-panel');
+    if (!panel) {
+        console.log('Panel not found');
+        return;
+    }
+
+    // Get current slide
+    const currentSlide = document.querySelector('.gslide.current');
+    if (!currentSlide) {
+        console.log('Current slide not found');
+        return;
+    }
+
+    const slideContainer = currentSlide.querySelector('.gslide-media');
+    if (!slideContainer) {
+        console.log('Slide container not found');
+        return;
+    }
+
+    // Find the original photo card to get data
+    const slideImage = slideContainer.querySelector('img');
+    if (!slideImage) {
+        console.log('Slide image not found');
+        return;
+    }
+
+    const imageSrc = slideImage.src;
+    console.log('Looking for image:', imageSrc);
+
+    // Extract just the path part from the URL for matching
+    let imagePath = imageSrc;
+    try {
+        const url = new URL(imageSrc);
+        imagePath = url.pathname; // Gets just the path part like "/processed/large/DSCF2987.jpg"
+    } catch (e) {
+        console.log('Could not parse URL, using full src');
+    }
+
+    // Try to find matching photo card by comparing image paths
+    let photoCard = Array.from(document.querySelectorAll('.photo-card')).find(card => {
+        const cardData = JSON.parse(card.getAttribute('data-photo-info'));
+        const largePath = cardData.images.large;
+        // Check if the image path ends with or contains the large image path
+        return imagePath.includes(largePath) || card.href === imageSrc;
+    });
+
+    if (!photoCard) {
+        console.log('Photo card not found. Available cards:', document.querySelectorAll('.photo-card').length);
+        console.log('Image path we are looking for:', imagePath);
+        panel.innerHTML = '<div class="info-section"><p>Unable to load photo data</p></div>';
+        return;
+    }
+
+    const photoData = JSON.parse(photoCard.getAttribute('data-photo-info'));
+    console.log('Photo data loaded for:', photoData.title);
+
+    // Check if bounding boxes are currently enabled (before we rebuild the panel)
+    const currentCheckbox = document.getElementById('bbox-toggle');
+    const bboxWasEnabled = currentCheckbox && currentCheckbox.checked;
+    console.log('Bbox was enabled:', bboxWasEnabled);
+
+    // Remove any existing bounding boxes before updating panel
+    removeBoundingBoxes();
+
+    // Build info panel HTML
+    let html = `
+        <div class="info-section">
+            <h3>${photoData.title || 'Untitled'}</h3>
+        </div>
+    `;
+
+    if (photoData.caption) {
+        html += `
+            <div class="info-section">
+                <div class="info-label">Caption</div>
+                <div class="info-content">${photoData.caption}</div>
+            </div>
+        `;
+    }
+
+    if (photoData.location && photoData.location.name) {
+        html += `
+            <div class="info-section">
+                <div class="info-label">Location</div>
+                <div class="location-badge">${photoData.location.name}</div>
+            </div>
+        `;
+    }
+
+    // Camera and lens info (EXIF)
+    if (photoData.exif_info) {
+        const exif = photoData.exif_info;
+        html += `
+            <div class="info-section">
+                <div class="info-label">Camera</div>
+                <div class="info-content camera-info">
+                    ${exif.camera ? `<div class="exif-item"><strong>Camera:</strong> ${exif.camera}</div>` : ''}
+                    ${exif.lens ? `<div class="exif-item"><strong>Lens:</strong> ${exif.lens}</div>` : ''}
+                    ${exif.focal_length ? `<div class="exif-item"><strong>Focal Length:</strong> ${exif.focal_length}mm</div>` : ''}
+                    ${exif.f ? `<div class="exif-item"><strong>Aperture:</strong> ${exif.f}</div>` : ''}
+                    ${exif.exposure ? `<div class="exif-item"><strong>Shutter:</strong> ${exif.exposure}s</div>` : ''}
+                    ${exif.iso ? `<div class="exif-item"><strong>ISO:</strong> ${exif.iso}</div>` : ''}
+                </div>
+            </div>
+        `;
+    }
+
+    // Top 3 dominant colors
+    if (photoData.rekognition && photoData.rekognition.dominant_colors && photoData.rekognition.dominant_colors.length > 0) {
+        const topColors = photoData.rekognition.dominant_colors.slice(0, 3);
+        html += `
+            <div class="info-section">
+                <div class="info-label">Dominant Colors</div>
+                <div class="colors-container">
+                    ${topColors.map(color => `
+                        <div class="color-swatch">
+                            <div class="color-box" style="background-color: ${color.hex}"></div>
+                            <div class="color-info">
+                                <div class="color-name">${color.simplified_color}</div>
+                                <div class="color-percent">${color.pixel_percentage}%</div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    if (photoData.rekognition && photoData.rekognition.labels && photoData.rekognition.labels.length > 0) {
+        const topLabels = photoData.rekognition.labels.slice(0, 8);
+        html += `
+            <div class="info-section">
+                <div class="info-label">Detected Labels</div>
+                <div class="labels-container">
+                    ${topLabels.map(label => `<div class="label-tag">${label.name}</div>`).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    // Bounding box toggle
+    const hasInstances = photoData.rekognition && photoData.rekognition.labels &&
+        photoData.rekognition.labels.some(label => label.instances && label.instances.length > 0);
+
+    if (hasInstances) {
+        html += `
+            <div class="info-section">
+                <div class="info-label">Object Detection</div>
+                <div class="toggle-container">
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="bbox-toggle" onchange="toggleBoundingBoxes()">
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span class="toggle-label">Show Bounding Boxes</span>
+                </div>
+            </div>
+        `;
+    }
+
+    panel.innerHTML = html;
+
+    // Restore the bounding box toggle state and re-render boxes if they were enabled
+    setTimeout(() => {
+        const checkbox = document.getElementById('bbox-toggle');
+        console.log('Restoring bbox state, checkbox exists:', !!checkbox, 'was enabled:', bboxWasEnabled);
+        if (checkbox && bboxWasEnabled) {
+            checkbox.checked = true;
+            console.log('Re-rendering bounding boxes for new image');
+            renderBoundingBoxes();
+        }
+    }, 100);
 }
 
 // Render a single photo
@@ -93,15 +320,8 @@ function renderPhoto(photo) {
     photoCard.className = 'glightbox photo-card';
     photoCard.href = `${baseUrl}/${photo.images.large}`;
 
-    // Build description with caption and location
-    let description = photo.title || 'Untitled';
-    if (photo.caption) {
-        description += `<br>${photo.caption}`;
-    }
-    if (photo.location && photo.location.name) {
-        description += `<br>📍 ${photo.location.name}`;
-    }
-    photoCard.setAttribute('data-glightbox', `description: ${description}`);
+    // Store photo data for info panel
+    photoCard.setAttribute('data-photo-info', JSON.stringify(photo));
 
     // Create thumbnail image
     const img = document.createElement('img');
@@ -125,6 +345,165 @@ const observer = new IntersectionObserver((entries) => {
 });
 
 observer.observe(loadMoreTrigger);
+
+// Toggle bounding boxes on/off
+function toggleBoundingBoxes() {
+    const checkbox = document.getElementById('bbox-toggle');
+    if (!checkbox) return;
+
+    if (checkbox.checked) {
+        renderBoundingBoxes();
+    } else {
+        removeBoundingBoxes();
+    }
+}
+
+// Render bounding boxes as SVG overlay
+function renderBoundingBoxes() {
+    // Remove any existing overlay first
+    removeBoundingBoxes();
+
+    // Get current slide and photo data
+    const currentSlide = document.querySelector('.gslide.current');
+    if (!currentSlide) return;
+
+    const slideContainer = currentSlide.querySelector('.gslide-media');
+    if (!slideContainer) return;
+
+    const slideImage = slideContainer.querySelector('img');
+    if (!slideImage) return;
+
+    // Get photo data using the same matching logic as updateInfoPanel
+    const imageSrc = slideImage.src;
+    let imagePath = imageSrc;
+    try {
+        const url = new URL(imageSrc);
+        imagePath = url.pathname;
+    } catch (e) {
+        // Use full src if URL parsing fails
+    }
+
+    const photoCard = Array.from(document.querySelectorAll('.photo-card')).find(card => {
+        const cardData = JSON.parse(card.getAttribute('data-photo-info'));
+        const largePath = cardData.images.large;
+        return imagePath.includes(largePath) || card.href === imageSrc;
+    });
+    if (!photoCard) return;
+
+    const photoData = JSON.parse(photoCard.getAttribute('data-photo-info'));
+
+    // Get all instances with bounding boxes
+    const instances = [];
+    if (photoData.rekognition && photoData.rekognition.labels) {
+        photoData.rekognition.labels.forEach(label => {
+            if (label.instances && label.instances.length > 0) {
+                label.instances.forEach(instance => {
+                    if (instance.BoundingBox) {
+                        instances.push({
+                            label: label.name,
+                            confidence: instance.Confidence,
+                            box: instance.BoundingBox
+                        });
+                    }
+                });
+            }
+        });
+    }
+
+    if (instances.length === 0) return;
+
+    // Get image dimensions
+    const imgRect = slideImage.getBoundingClientRect();
+    const imgWidth = slideImage.naturalWidth;
+    const imgHeight = slideImage.naturalHeight;
+    const displayWidth = imgRect.width;
+    const displayHeight = imgRect.height;
+
+    // Create SVG overlay
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'bbox-overlay');
+    svg.style.position = 'absolute';
+    svg.style.top = '0';
+    svg.style.left = '0';
+    svg.style.width = '100%';
+    svg.style.height = '100%';
+    svg.style.pointerEvents = 'none';
+    svg.style.zIndex = '1';
+
+    // Calculate scale factor (handles image being scaled to fit container)
+    const scaleX = displayWidth / imgWidth;
+    const scaleY = displayHeight / imgHeight;
+    const scale = Math.min(scaleX, scaleY);
+
+    // Calculate offset (handles centering of scaled image)
+    const scaledWidth = imgWidth * scale;
+    const scaledHeight = imgHeight * scale;
+    const offsetX = (displayWidth - scaledWidth) / 2;
+    const offsetY = (displayHeight - scaledHeight) / 2;
+
+    // Draw each bounding box
+    instances.forEach((instance) => {
+        const box = instance.box;
+
+        // Convert normalized coordinates (0-1) to pixel coordinates
+        const x = (box.Left * imgWidth * scale) + offsetX;
+        const y = (box.Top * imgHeight * scale) + offsetY;
+        const width = box.Width * imgWidth * scale;
+        const height = box.Height * imgHeight * scale;
+
+        // Create rectangle
+        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        rect.setAttribute('x', x);
+        rect.setAttribute('y', y);
+        rect.setAttribute('width', width);
+        rect.setAttribute('height', height);
+        rect.setAttribute('class', 'bbox-rect');
+        rect.style.fill = 'none';
+        rect.style.stroke = '#00ff00';
+        rect.style.strokeWidth = '3';
+        rect.style.opacity = '0.8';
+
+        // Create label background
+        const labelBg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        const labelText = `${instance.label} (${instance.confidence.toFixed(1)}%)`;
+        const labelWidth = labelText.length * 8 + 16;
+        const labelHeight = 24;
+
+        labelBg.setAttribute('x', x);
+        labelBg.setAttribute('y', y - labelHeight);
+        labelBg.setAttribute('width', labelWidth);
+        labelBg.setAttribute('height', labelHeight);
+        labelBg.setAttribute('class', 'bbox-label-bg');
+        labelBg.style.fill = '#00ff00';
+        labelBg.style.opacity = '0.9';
+
+        // Create label text
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        text.setAttribute('x', x + 8);
+        text.setAttribute('y', y - 7);
+        text.setAttribute('class', 'bbox-label-text');
+        text.style.fill = '#000';
+        text.style.fontSize = '14px';
+        text.style.fontWeight = 'bold';
+        text.style.fontFamily = 'Arial, sans-serif';
+        text.textContent = labelText;
+
+        // Add to SVG
+        svg.appendChild(rect);
+        svg.appendChild(labelBg);
+        svg.appendChild(text);
+    });
+
+    // Add SVG to the slide container
+    slideContainer.style.position = 'relative';
+    slideContainer.appendChild(svg);
+}
+
+// Remove bounding boxes
+function removeBoundingBoxes() {
+    const overlays = document.querySelectorAll('.bbox-overlay');
+    overlays.forEach(overlay => overlay.remove());
+}
 
 // Initialize
 fetchGalleryData();

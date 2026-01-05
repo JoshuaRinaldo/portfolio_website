@@ -8,7 +8,7 @@ Responsibilities:
 3. Extract GPS coordinates from EXIF data
 4. Call AWS Location Service for reverse geocoding (lat/lon → city, country)
 5. Call AWS Rekognition for object/scene detection and dominant colors
-6. Call AWS Bedrock (Claude) for AI-generated caption
+6. Call AWS Bedrock for AI-generated caption
 7. Update gallery.json with photo metadata (images, location, caption, labels, colors)
 8. Clean up uploads/ folder
 
@@ -23,8 +23,10 @@ import json
 import os
 import logging
 import base64
+import re
 from io import BytesIO
 from PIL import Image, ImageOps
+from PIL.ExifTags import TAGS
 from urllib.parse import unquote_plus
 from datetime import datetime
 from typing import Dict
@@ -138,10 +140,7 @@ def detect_labels_rekognition(bucket: str, image_key: str) -> Dict:
                 'name': label['Name'],
                 'confidence': round(label['Confidence'], 2),
                 'categories': [cat['Name'] for cat in label.get('Categories', [])],
-                'height': label['Height'],
-                'left': label['Left'],
-                'top': label['Top'],
-                'width': label['Width'],
+                'instances': label['Instances'],
             }
             labels.append(label_data)
             categories.update(label_data['categories'])
@@ -502,11 +501,42 @@ def handler(event, context):
                         gps_data['longitude']
                     )
 
-            # Auto-generate title from top labels if no caption
+            # Auto-generate title from filename
             title = name.replace('_', ' ').replace('-', ' ').title()
-            if not ai_caption and rekognition_data['labels']:
-                top_labels = [l['name'] for l in rekognition_data['labels'][:3]]
-                title = ' - '.join(top_labels)
+            
+            # Get exif data about image camera, lens, settings
+            exif_data = large_pil_image.getexif()
+
+            # Get the EXIF data
+            exif = {}
+            for tag_id, value in exif_data.items():
+                tag = TAGS.get(tag_id, tag_id)
+                exif[tag] = value
+
+            # Now get the EXIF sub-IFD (where camera settings live)
+            exif_ifd = exif_data.get_ifd(0x8769)  # 0x8769 is the EXIF IFD tag
+
+            for tag_id, value in exif_ifd.items():
+                tag = TAGS.get(tag_id, tag_id)
+                exif[tag] = value
+
+            camera_name = exif.get("Make", "").lower() + " " + exif.get("Model", "")
+            if camera_name[-1] == " ":
+                camera_name = camera_name[:-1]
+
+            lens_name = exif.get("LensMake", "").lower() + " " + exif.get("LensModel", "")
+            lens_name = re.sub("\x00", "", lens_name)
+            if lens_name[-1] == " ":
+                lens_name = camera_name[:-1]
+
+            exif_info = {
+                "lens": lens_name,
+                "camera": camera_name,
+                "iso": exif["ISOSpeedRatings"],
+                "f": str(f"f/{exif['FNumber']}"),
+                "exposure": f"1/{1/exif['ExposureTime']}",
+                "focal_length": str(exif["FocalLength"]),
+            }
 
             # Build photo metadata
             photo_metadata = {
@@ -520,6 +550,7 @@ def handler(event, context):
                     'large': processed_keys['large'],
                     'full': processed_keys['full']
                 },
+                "exif_info": exif_info,
                 'rekognition': rekognition_data
             }
 
