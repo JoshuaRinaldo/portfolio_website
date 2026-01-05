@@ -202,54 +202,54 @@ function updateInfoPanel() {
     // Remove any existing bounding boxes before updating panel
     removeBoundingBoxes();
 
-    // Build info panel HTML
+    // Build info panel HTML with optimized grid layout
     let html = `
-        <div class="info-section">
-            <h3>${photoData.title || 'Untitled'}</h3>
-        </div>
+        <h3>${photoData.title || 'Untitled'}</h3>
+        <div class="ginfo-panel-content">
     `;
 
+    // ROW 1: Caption + Bounding Box Toggle
+    const hasInstances = photoData.rekognition && photoData.rekognition.labels &&
+        photoData.rekognition.labels.some(label => label.instances && label.instances.length > 0);
+
+    html += '<div class="info-row row-caption-toggle">';
+
+    // Caption (takes most of the row)
     if (photoData.caption) {
         html += `
-            <div class="info-section">
+            <div class="info-section caption-section">
                 <div class="info-label">Caption</div>
                 <div class="info-content">${photoData.caption}</div>
             </div>
         `;
     }
 
-    if (photoData.location && photoData.location.name) {
+    // Bounding box toggle (on the right)
+    if (hasInstances) {
         html += `
-            <div class="info-section">
-                <div class="info-label">Location</div>
-                <div class="location-badge">${photoData.location.name}</div>
-            </div>
-        `;
-    }
-
-    // Camera and lens info (EXIF)
-    if (photoData.exif_info) {
-        const exif = photoData.exif_info;
-        html += `
-            <div class="info-section">
-                <div class="info-label">Camera</div>
-                <div class="info-content camera-info">
-                    ${exif.camera ? `<div class="exif-item"><strong>Camera:</strong> ${exif.camera}</div>` : ''}
-                    ${exif.lens ? `<div class="exif-item"><strong>Lens:</strong> ${exif.lens}</div>` : ''}
-                    ${exif.focal_length ? `<div class="exif-item"><strong>Focal Length:</strong> ${exif.focal_length}mm</div>` : ''}
-                    ${exif.f ? `<div class="exif-item"><strong>Aperture:</strong> ${exif.f}</div>` : ''}
-                    ${exif.exposure ? `<div class="exif-item"><strong>Shutter:</strong> ${exif.exposure}s</div>` : ''}
-                    ${exif.iso ? `<div class="exif-item"><strong>ISO:</strong> ${exif.iso}</div>` : ''}
+            <div class="info-section bbox-toggle-section">
+                <div class="info-label">Object Detection</div>
+                <div class="toggle-container">
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="bbox-toggle" onchange="toggleBoundingBoxes()">
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span class="toggle-label">Show Boxes</span>
                 </div>
             </div>
         `;
     }
 
-    // Top 3 dominant colors
+    html += '</div>'; // Close row 1
+
+    // ROW 2: Dominant Colors + Labels
+    html += '<div class="info-row row-colors-labels">';
+
+    // Dominant colors (left side)
     if (photoData.rekognition && photoData.rekognition.dominant_colors && photoData.rekognition.dominant_colors.length > 0) {
         const topColors = photoData.rekognition.dominant_colors.slice(0, 3);
         html += `
-            <div class="info-section">
+            <div class="info-section colors-section">
                 <div class="info-label">Dominant Colors</div>
                 <div class="colors-container">
                     ${topColors.map(color => `
@@ -266,10 +266,11 @@ function updateInfoPanel() {
         `;
     }
 
+    // Labels (right side)
     if (photoData.rekognition && photoData.rekognition.labels && photoData.rekognition.labels.length > 0) {
-        const topLabels = photoData.rekognition.labels.slice(0, 8);
+        const topLabels = photoData.rekognition.labels.slice(0, 10);
         html += `
-            <div class="info-section">
+            <div class="info-section labels-section">
                 <div class="info-label">Detected Labels</div>
                 <div class="labels-container">
                     ${topLabels.map(label => `<div class="label-tag">${label.name}</div>`).join('')}
@@ -278,24 +279,28 @@ function updateInfoPanel() {
         `;
     }
 
-    // Bounding box toggle
-    const hasInstances = photoData.rekognition && photoData.rekognition.labels &&
-        photoData.rekognition.labels.some(label => label.instances && label.instances.length > 0);
+    html += '</div>'; // Close row 2
 
-    if (hasInstances) {
+    // ROW 3: Camera Settings (2x3 grid - flattened)
+    if (photoData.exif_info) {
+        const exif = photoData.exif_info;
         html += `
-            <div class="info-section">
-                <div class="info-label">Object Detection</div>
-                <div class="toggle-container">
-                    <label class="toggle-switch">
-                        <input type="checkbox" id="bbox-toggle" onchange="toggleBoundingBoxes()">
-                        <span class="toggle-slider"></span>
-                    </label>
-                    <span class="toggle-label">Show Bounding Boxes</span>
+            <div class="info-row row-camera-settings">
+                <div class="info-section camera-settings-section">
+                    <div class="info-label">Camera & Settings</div>
+                    <div class="camera-settings-grid-flat">
+                        ${exif.camera ? `<div class="exif-item"><strong>Camera:</strong> ${exif.camera}</div>` : ''}
+                        ${exif.focal_length ? `<div class="exif-item"><strong>Focal Length:</strong> ${exif.focal_length}mm</div>` : ''}
+                        ${exif.exposure ? `<div class="exif-item"><strong>Shutter:</strong> ${exif.exposure}s</div>` : ''}
+                        ${exif.lens ? `<div class="exif-item"><strong>Lens:</strong> ${exif.lens}</div>` : ''}
+                        ${exif.f ? `<div class="exif-item"><strong>Aperture:</strong> ${exif.f}</div>` : ''}
+                        ${exif.iso ? `<div class="exif-item"><strong>ISO:</strong> ${exif.iso}</div>` : ''}
+                    </div>
                 </div>
             </div>
-        `;
+        `; // Close row 3
     }
+    html += `</div>`; // Close ginfo-panel-content
 
     panel.innerHTML = html;
 
