@@ -6,6 +6,7 @@
     <title>Photo Gallery - Joshua Rinaldo</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/glightbox/dist/css/glightbox.min.css">
     <link rel="stylesheet" href="css/style.css">
+    <script src="js/theme-toggle.js"></script>
 </head>
 <body>
     <nav class="navbar">
@@ -20,8 +21,33 @@
     <main class="gallery-page">
         <header class="page-header">
             <h1 class="page-title">Photo Gallery</h1>
-            <p class="page-description">A collection of moments captured through my lens</p>
+            <p class="page-description">A collection of photos</p>
         </header>
+
+        <div class="search-controls">
+            <div class="search-group">
+                <h3 class="search-title">Search by Color</h3>
+                <input type="color" id="color-picker" value="#ffffff">
+            </div>
+
+            <div class="search-group">
+                <h3 class="search-title">Search by Label</h3>
+                <div class="multiselect-wrapper">
+                    <div class="multiselect-dropdown" id="label-dropdown">
+                        <div class="multiselect-display" id="label-display">
+                            <span class="placeholder">Select labels...</span>
+                        </div>
+                        <div class="multiselect-options" id="label-options">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="search-group search-buttons">
+                <button id="search-btn" class="search-btn">Search</button>
+                <button id="reset-btn" class="reset-btn">Reset</button>
+            </div>
+        </div>
 
         <div class="gallery-container">
             <div id="loading" class="loading-spinner">
@@ -34,10 +60,6 @@
             <div id="load-more-trigger" class="load-more-trigger"></div>
         </div>
     </main>
-
-    <footer>
-        <p>&copy; 2024 Joshua Rinaldo. All rights reserved.</p>
-    </footer>
 
     <script src="https://cdn.jsdelivr.net/gh/mcstudios/glightbox/dist/js/glightbox.min.js"></script>
     <script src="js/gallery.js"></script>

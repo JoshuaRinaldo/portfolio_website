@@ -7,16 +7,20 @@
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-    <nav class="navbar">
-        <div class="container">
-            <a href="index.html" class="nav-link">Home</a>
-            <a href="explanations.html" class="nav-link active">Model Explanations</a>
-            <a href="counterfactuals.html" class="nav-link">Text Counterfactuals</a>
-            <a href="gallery.html" class="nav-link">Gallery</a>
-        </div>
-    </nav>
+    <div class="particles-wrapper">
+        <!-- particles.js container -->
+        <div id="particles-js"></div>
 
-    <main class="container">
+        <nav class="navbar">
+            <div class="container">
+                <a href="index.html" class="nav-link">Home</a>
+                <a href="explanations.html" class="nav-link active">Model Explanations</a>
+                <a href="counterfactuals.html" class="nav-link">Text Counterfactuals</a>
+                <a href="gallery.html" class="nav-link">Gallery</a>
+            </div>
+        </nav>
+
+        <main class="container">
         <h1 class="page-title">Model Explanations</h1>
 
         <section class="intro">
@@ -76,13 +80,13 @@
         </div>
     </main>
 
-    <footer>
-        <div class="container">
-            <p>&copy; 2025 Josh Rinaldo. All rights reserved.</p>
-        </div>
-    </footer>
-
+    <script src="js/theme-toggle.js"></script>
     <script src="js/config.js"></script>
     <script src="js/explanations.js"></script>
+
+    <!-- particles.js scripts -->
+    <script src="js/particles/particles.js"></script>
+    <script src="js/particles/app.js"></script>
+    </div>
 </body>
 </html>

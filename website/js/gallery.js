@@ -8,6 +8,9 @@ let displayedPhotos = [];
 let currentIndex = 0;
 let isLoading = false;
 let lightbox = null;
+let filteredPhotos = [];
+let activeSearchMode = null; // 'color', 'label', or null
+let selectedLabels = new Set(); // Track selected labels for multiselect
 
 // Elements
 const photoGrid = document.getElementById('photo-grid');
@@ -27,6 +30,9 @@ async function fetchGalleryData() {
 
         console.log(`Loaded ${allPhotos.length} photos from gallery`);
 
+        // Populate label dropdown
+        populateLabelDropdown();
+
         // Load initial batch
         loadMorePhotos();
 
@@ -40,6 +46,48 @@ async function fetchGalleryData() {
     }
 }
 
+// Extract all labels and count frequencies
+function getLabelFrequencies() {
+    const labelCounts = {};
+
+    allPhotos.forEach(photo => {
+        if (photo.rekognition && photo.rekognition.labels) {
+            photo.rekognition.labels.forEach(label => {
+                const labelName = label.name;
+                labelCounts[labelName] = (labelCounts[labelName] || 0) + 1;
+            });
+        }
+    });
+
+    // Convert to array and sort by frequency (descending)
+    return Object.entries(labelCounts)
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count);
+}
+
+// Populate label dropdown with sorted labels
+function populateLabelDropdown() {
+    const labelOptions = document.getElementById('label-options');
+    if (!labelOptions) return;
+
+    const labels = getLabelFrequencies();
+
+    labelOptions.innerHTML = labels.map(label => `
+        <div class="multiselect-option" data-label="${label.name}">
+            <input type="checkbox" id="label-${label.name}" value="${label.name}">
+            <label for="label-${label.name}">
+                <span class="label-name">${label.name}</span>
+                <span class="label-count">(${label.count})</span>
+            </label>
+        </div>
+    `).join('');
+
+    // Add event listeners to checkboxes
+    labelOptions.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+        checkbox.addEventListener('change', handleLabelSelection);
+    });
+}
+
 // Shuffle array (Fisher-Yates algorithm)
 function shuffleArray(array) {
     const shuffled = [...array];
@@ -50,9 +98,157 @@ function shuffleArray(array) {
     return shuffled;
 }
 
+// Convert hex color to RGB
+function hexToRgb(hex) {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? {
+        r: parseInt(result[1], 16),
+        g: parseInt(result[2], 16),
+        b: parseInt(result[3], 16)
+    } : null;
+}
+
+// Calculate Euclidean distance between two RGB colors
+function colorDistance(rgb1, rgb2) {
+    const rDiff = rgb1.r - rgb2.r;
+    const gDiff = rgb1.g - rgb2.g;
+    const bDiff = rgb1.b - rgb2.b;
+    return Math.sqrt(rDiff * rDiff + gDiff * gDiff + bDiff * bDiff);
+}
+
+// Calculate composite color score for a photo
+function calculateColorScore(photo, targetHex) {
+    if (!photo.rekognition || !photo.rekognition.dominant_colors || photo.rekognition.dominant_colors.length === 0) {
+        return Infinity; // Photos without color data go to the end
+    }
+
+    const targetRgb = hexToRgb(targetHex);
+    if (!targetRgb) return Infinity;
+
+    // Get top 3 dominant colors
+    const dominantColors = photo.rekognition.dominant_colors.slice(0, 3);
+
+    // Calculate weighted score for each color
+    // Score = distance / (pixel_percentage / 100)
+    // Lower score is better (closer color + higher percentage)
+    const scores = dominantColors.map(color => {
+        const colorRgb = hexToRgb(color.hex);
+        if (!colorRgb) return Infinity;
+
+        const distance = colorDistance(targetRgb, colorRgb);
+        const percentage = parseFloat(color.pixel_percentage) / 100 + 1;
+
+        return distance / percentage;
+    });
+
+    // Return the best (lowest) score
+    return Math.min(...scores);
+}
+
+// Unified search: filter by labels, then sort by color
+function performSearch() {
+    const colorPicker = document.getElementById('color-picker');
+    const hexColor = colorPicker ? colorPicker.value : '#ffffff';
+
+    // Step 1: Filter by labels (if any are selected)
+    let photosToSearch;
+    if (selectedLabels.size > 0) {
+        photosToSearch = allPhotos.filter(photo => {
+            if (!photo.rekognition || !photo.rekognition.labels) return false;
+            return photo.rekognition.labels.some(label =>
+                selectedLabels.has(label.name)
+            );
+        });
+        activeSearchMode = 'active';
+    } else {
+        photosToSearch = allPhotos;
+    }
+
+    // Step 2: Sort by color similarity
+    const photosWithScores = photosToSearch.map(photo => ({
+        photo,
+        score: calculateColorScore(photo, hexColor)
+    }));
+
+    // Sort by score (lower is better)
+    photosWithScores.sort((a, b) => a.score - b.score);
+
+    // Extract sorted photos
+    filteredPhotos = photosWithScores.map(item => item.photo);
+
+    if (filteredPhotos.length > 0) {
+        activeSearchMode = 'active';
+    } else {
+        activeSearchMode = null;
+    }
+
+    // Reset and reload gallery
+    resetGallery();
+    loadMorePhotos();
+}
+
+// Handle label checkbox selection
+function handleLabelSelection(event) {
+    const label = event.target.value;
+
+    if (event.target.checked) {
+        selectedLabels.add(label);
+    } else {
+        selectedLabels.delete(label);
+    }
+
+    updateLabelDisplay();
+}
+
+// Update the multiselect display to show selected labels
+function updateLabelDisplay() {
+    const display = document.getElementById('label-display');
+    if (!display) return;
+
+    if (selectedLabels.size === 0) {
+        display.innerHTML = '<span class="placeholder">Select labels...</span>';
+    } else {
+        const labelTags = Array.from(selectedLabels).map(label => `
+            <span class="selected-label-tag">${label}</span>
+        `).join('');
+        display.innerHTML = labelTags;
+    }
+}
+
+// Reset search and show all photos
+function resetSearch() {
+    activeSearchMode = null;
+    filteredPhotos = [];
+    selectedLabels.clear();
+
+    // Clear all checkboxes
+    document.querySelectorAll('#label-options input[type="checkbox"]').forEach(checkbox => {
+        checkbox.checked = false;
+    });
+
+    updateLabelDisplay();
+    resetGallery();
+    allPhotos = shuffleArray(allPhotos);
+    loadMorePhotos();
+}
+
+// Reset gallery display
+function resetGallery() {
+    displayedPhotos = [];
+    currentIndex = 0;
+    photoGrid.innerHTML = '';
+    if (lightbox) {
+        lightbox.destroy();
+        lightbox = null;
+    }
+}
+
 // Load more photos
 function loadMorePhotos() {
-    if (isLoading || currentIndex >= allPhotos.length) {
+    // Use filtered photos if search is active, otherwise use all photos
+    const photosToDisplay = activeSearchMode ? filteredPhotos : allPhotos;
+
+    if (isLoading || currentIndex >= photosToDisplay.length) {
         loadingSpinner.style.display = 'none';
         return;
     }
@@ -61,7 +257,7 @@ function loadMorePhotos() {
     loadingSpinner.style.display = 'flex';
 
     // Get next batch
-    const batch = allPhotos.slice(currentIndex, currentIndex + PHOTOS_PER_LOAD);
+    const batch = photosToDisplay.slice(currentIndex, currentIndex + PHOTOS_PER_LOAD);
     currentIndex += PHOTOS_PER_LOAD;
 
     // Render photos
@@ -341,7 +537,8 @@ function renderPhoto(photo) {
 // Intersection Observer for infinite scroll
 const observer = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
-        if (entry.isIntersecting && !isLoading && currentIndex < allPhotos.length) {
+        const photosToDisplay = activeSearchMode ? filteredPhotos : allPhotos;
+        if (entry.isIntersecting && !isLoading && currentIndex < photosToDisplay.length) {
             loadMorePhotos();
         }
     });
@@ -509,6 +706,46 @@ function removeBoundingBoxes() {
     const overlays = document.querySelectorAll('.bbox-overlay');
     overlays.forEach(overlay => overlay.remove());
 }
+
+// Event listeners for search controls
+document.addEventListener('DOMContentLoaded', () => {
+    const colorPicker = document.getElementById('color-picker');
+    const searchBtn = document.getElementById('search-btn');
+    const labelDropdown = document.getElementById('label-dropdown');
+    const labelDisplay = document.getElementById('label-display');
+    const labelOptions = document.getElementById('label-options');
+    const resetBtn = document.getElementById('reset-btn');
+
+    // Unified search button
+    searchBtn.addEventListener('click', () => {
+        performSearch();
+        labelDropdown.classList.remove('open');
+    });
+
+    // Toggle label dropdown
+    labelDisplay.addEventListener('click', (e) => {
+        e.stopPropagation();
+        labelDropdown.classList.toggle('open');
+    });
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!labelDropdown.contains(e.target)) {
+            labelDropdown.classList.remove('open');
+        }
+    });
+
+    // Prevent dropdown from closing when clicking inside options
+    labelOptions.addEventListener('click', (e) => {
+        e.stopPropagation();
+    });
+
+    // Reset button
+    resetBtn.addEventListener('click', () => {
+        resetSearch();
+        colorPicker.value = '#ffffff';
+    });
+});
 
 // Initialize
 fetchGalleryData();
