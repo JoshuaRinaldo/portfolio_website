@@ -21,6 +21,19 @@
             "actions": ["sagemaker:InvokeEndpoint"]
           }
         ]
+      },
+      {
+        "function_type": "from_docker_image",
+        "environment_variable_name": "WARMUP_ENDPOINTS_LAMBDA",
+        "folder_name": "warmup_endpoints",
+        "route_path": "warmup",
+        "timeout": 3,
+        "policy_statements": [
+          {
+            "resources": ["*"],
+            "actions": ["sagemaker:InvokeEndpoint"]
+          }
+        ]
       }
     ],
     "classification_models": {

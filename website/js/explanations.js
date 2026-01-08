@@ -1,11 +1,30 @@
 // Configuration - loaded from config.js (generated during CDK deployment)
-// Variables API_ENDPOINT, CLASSIFICATION_MODELS, and ENDPOINT_NAMES are defined in config.js
+// Variables API_ENDPOINT, WARMUP_ENDPOINT, CLASSIFICATION_MODELS, and ENDPOINT_NAMES are defined in config.js
 
 console.log('Config loaded:', {
     API_ENDPOINT,
+    WARMUP_ENDPOINT,
     CLASSIFICATION_MODELS,
     ENDPOINT_NAMES
 });
+
+// Warmup endpoints on page load
+function warmupEndpoints() {
+    // Fire-and-forget async request to warmup endpoint
+    // Don't wait for response or handle errors - we want this to be non-blocking
+    fetch(WARMUP_ENDPOINT, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    }).catch(() => {
+        // Silently ignore errors - warmup is a best-effort optimization
+        console.log('Warmup request sent (response not awaited)');
+    });
+}
+
+// Call warmup when page loads
+warmupEndpoints();
 
 // Get DOM elements
 const form = document.getElementById('explanation-form');

@@ -13,6 +13,7 @@ from aws_cdk import (
     aws_apigateway as apigw,
     aws_lambda as lambda_,
     aws_iam as iam,
+    aws_dynamodb as dynamodb,
 )
 from .sagemaker import SagemakerHuggingface, SagemakerFromImageAndModelData
 from .lambda_ import LambdaFunctionFromDockerImage
@@ -52,13 +53,24 @@ class StaticSite(Stack):
         domain_name = self.node.try_get_context("domain_name")
         classification_models = self.node.try_get_context("classification_models")
 
-        # Create Lambda functions and store in dictionary
+        # Store Lambda configs that need endpoint names as env vars
         lambda_arns = []
         lambda_functions_map = {}  # Maps route_path -> lambda function
+        warmup_lambda_config = None
+        invoke_model_lambda_config = None
 
         for lambda_function_n in lambda_functions:
             lambda_env_var_name = lambda_function_n["environment_variable_name"]
             route_path = lambda_function_n.get("route_path")  # Optional
+
+            # Skip warmup and invoke_model Lambdas
+            if lambda_env_var_name == "WARMUP_ENDPOINTS_LAMBDA":
+                warmup_lambda_config = lambda_function_n
+                continue
+
+            if lambda_env_var_name == "INVOKE_MODEL_LAMBDA":
+                invoke_model_lambda_config = lambda_function_n
+                continue
 
             if lambda_function_n["function_type"] == "from_docker_image":
                 lambda_function = LambdaFunctionFromDockerImage(
@@ -122,6 +134,82 @@ class StaticSite(Stack):
             sagemaker_arns.append(endpoint_arn)
             endpoint_names[endpoint_env_var_name] = endpoint_name
 
+        # Create DynamoDB table for endpoint warmup tracking
+        warmup_table = dynamodb.Table(
+            self,
+            f"{environment}-endpoint-warmup-table",
+            table_name=f"{environment}-endpoint-warmup",
+            partition_key=dynamodb.Attribute(
+                name="endpoint_name",
+                type=dynamodb.AttributeType.STRING
+            ),
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+            removal_policy=RemovalPolicy.DESTROY,
+        )
+
+        # Now create the warmup Lambda with endpoint names and DynamoDB table as env vars
+        if warmup_lambda_config:
+            # Build environment variables for warmup Lambda
+            warmup_env_vars = {
+                "WARMUP_TABLE_NAME": warmup_table.table_name,
+                "WARMUP_INTERVAL_SECONDS": "300",  # 5 minutes
+            }
+            # Add each endpoint name as an environment variable
+            for env_var_name, endpoint_name in endpoint_names.items():
+                warmup_env_vars[f"{env_var_name}_ENDPOINT_NAME"] = endpoint_name
+
+            warmup_lambda = LambdaFunctionFromDockerImage(
+                scope=self,
+                construct_id=f"{construct_id}-{warmup_lambda_config['environment_variable_name']}",
+                ecr_repo=warmup_lambda_config.get("ecr_repo", None),
+                tag=warmup_lambda_config.get("tag", None),
+                lambda_folder=warmup_lambda_config.get("folder_name", None),
+                platform=warmup_lambda_config.get("platform", "amd64"),
+                timeout=warmup_lambda_config.get("timeout", 5),
+                policy_statements=warmup_lambda_config.get("policy_statements", []),
+                memory_size=512,
+                environment=warmup_env_vars,
+            )
+
+            # Grant warmup Lambda read/write permissions to DynamoDB table
+            warmup_table.grant_read_write_data(warmup_lambda.lambda_function)
+
+            # Add warmup Lambda to the routing map
+            route_path = warmup_lambda_config.get("route_path")
+            if route_path:
+                lambda_functions_map[route_path] = warmup_lambda.lambda_function
+
+        # Create invoke_model Lambda with endpoint names as environment variables for validation
+        if invoke_model_lambda_config:
+            # Build environment variables with endpoint names for allowlist validation
+            invoke_model_env_vars = {}
+            for env_var_name, endpoint_name in endpoint_names.items():
+                invoke_model_env_vars[env_var_name] = endpoint_name
+
+            invoke_model_lambda = LambdaFunctionFromDockerImage(
+                scope=self,
+                construct_id=f"{construct_id}-{invoke_model_lambda_config['environment_variable_name']}",
+                ecr_repo=invoke_model_lambda_config.get("ecr_repo", None),
+                tag=invoke_model_lambda_config.get("tag", None),
+                lambda_folder=invoke_model_lambda_config.get("folder_name", None),
+                platform=invoke_model_lambda_config.get("platform", "amd64"),
+                timeout=invoke_model_lambda_config.get("timeout", 5),
+                policy_statements=invoke_model_lambda_config.get("policy_statements", []),
+                memory_size=512,
+                environment=invoke_model_env_vars,
+            )
+
+            # Add invoke_model Lambda to the routing map
+            route_path = invoke_model_lambda_config.get("route_path")
+            if route_path:
+                lambda_functions_map[route_path] = invoke_model_lambda.lambda_function
+
+        # Set domain name based on environment
+        if environment == "prod":
+            api_domain_name = domain_name
+        else:
+            api_domain_name = f"{environment}.{domain_name}"
+
         # Create API Gateway with Lambda proxy integration
         api = apigw.RestApi(
             self,
@@ -129,15 +217,15 @@ class StaticSite(Stack):
             rest_api_name=f"{environment}-api",
             description="API for portfolio website services",
             default_cors_preflight_options=apigw.CorsOptions(
-                allow_origins=apigw.Cors.ALL_ORIGINS,
-                allow_methods=apigw.Cors.ALL_METHODS,
+                allow_origins=[f"https://{api_domain_name}"],  # Restrict to portfolio domain only
+                allow_methods=["POST", "OPTIONS"],  # Only POST and OPTIONS (for preflight)
                 allow_headers=["Content-Type", "Authorization"],
             ),
-            
+
             # Add default throttling to prevent abuse
             deploy_options=apigw.StageOptions(
-                throttling_rate_limit=10,  # 10 requests per second max
-                throttling_burst_limit=20,  # Allow bursts up to 20 requests
+                throttling_rate_limit=2,  # 2 requests per second max (reduced from 10)
+                throttling_burst_limit=5,  # Allow bursts up to 5 requests (reduced from 20)
             ),
         )
 
@@ -152,12 +240,6 @@ class StaticSite(Stack):
             # Add API resource and method
             resource = api.root.add_resource(route_path)
             resource.add_method("POST", lambda_integration)
-
-        # Set domain name based on environment
-        if environment == "prod":
-            api_domain_name = domain_name
-        else:
-            api_domain_name = f"{environment}.{domain_name}"
 
         # Configure hosted zone
         hosted_zone = route53.HostedZone.from_hosted_zone_attributes(
@@ -236,14 +318,15 @@ class StaticSite(Stack):
             ],
         )
 
-        # Build API endpoint URL manually using the API ID
+        # Build API endpoint URLs manually using the API ID
         # This avoids CDK token resolution issues
-        # Use the "invoke" route for the generic model invocation Lambda
         api_endpoint = f"https://{api.rest_api_id}.execute-api.{region}.amazonaws.com/prod/invoke"
+        warmup_endpoint = f"https://{api.rest_api_id}.execute-api.{region}.amazonaws.com/prod/warmup"
 
         # Generate config.js content
         config_js_content = f"""// Configuration generated during CDK deployment
 const API_ENDPOINT = '{api_endpoint}';
+const WARMUP_ENDPOINT = '{warmup_endpoint}';
 
 const CLASSIFICATION_MODELS = {json.dumps(classification_models, indent=2)};
 

@@ -1,12 +1,25 @@
 import boto3
 import json
 import logging
+import os
 
 # Set up our logger
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger()
 
 runtime_sagemaker_client = boto3.client(service_name='sagemaker-runtime')
+
+# Allowlist of permitted SageMaker endpoints - only these can be invoked
+# Populated from environment variables set by CDK deployment
+ALLOWED_ENDPOINTS = {
+    os.environ.get(key)
+    for key in os.environ.keys()
+    if key.endswith('_CLASSIFICATION_MODEL')
+}
+# Remove None values in case any env vars are missing
+ALLOWED_ENDPOINTS.discard(None)
+
+logger.info(f"Allowed endpoints: {ALLOWED_ENDPOINTS}")
 
 def handler(event, context):
     """
@@ -63,6 +76,14 @@ def handler(event, context):
         endpoint_name = body["endpoint_name"]
         payload = body["payload"]
         content_type = body.get("content_type", "application/json")
+
+        # Validate endpoint name against allowlist
+        if endpoint_name not in ALLOWED_ENDPOINTS:
+            logger.warning(f"Attempted to invoke unauthorized endpoint: {endpoint_name}")
+            return format_response({
+                "success": False,
+                "error": "Invalid or unauthorized endpoint name"
+            }, 403)
 
         logger.info(f"Invoking endpoint: {endpoint_name}")
 
