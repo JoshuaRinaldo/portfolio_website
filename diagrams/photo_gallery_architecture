@@ -1,0 +1,102 @@
+digraph "Photo Gallery Architecture" {
+	graph [bgcolor=white fontcolor="#2D3436" fontname="Sans-Serif" fontsize=16 label="Photo Gallery Architecture" nodesep=0.60 pad=0.5 rankdir=TB ranksep=0.75 splines=ortho]
+	node [fixedsize=true fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13 height=1.4 imagescale=true labelloc=b shape=box style=rounded width=1.4]
+	edge [color="#7B8894"]
+	"71e1e6f262744700a754c8285560411d" [label="Photographer
+(Upload Photo)" height=2.3 image="/Users/jrinaldo/miniconda3/lib/python3.12/site-packages/resources/aws/general/user.png" shape=none]
+	"09c6bc62c2294a5d90c2a749235fcd20" [label="Website Visitor" height=1.9 image="/Users/jrinaldo/miniconda3/lib/python3.12/site-packages/resources/onprem/client/client.png" shape=none]
+	subgraph "cluster_AWS Cloud" {
+		graph [bgcolor="#E5F5FD" fontname="Sans-Serif" fontsize=12 label="AWS Cloud" labeljust=l pencolor="#AEB6BE" rankdir=LR shape=box style=rounded]
+		subgraph "cluster_Photo Storage (S3 Bucket)" {
+			graph [bgcolor="#EBF3E7" fontname="Sans-Serif" fontsize=12 label="Photo Storage (S3 Bucket)" labeljust=l pencolor="#AEB6BE" rankdir=LR shape=box style=rounded]
+			"97d92b85c58248fa9213dd398de2dad3" [label="uploads/
+(Original Photos)" height=2.3 image="/Users/jrinaldo/miniconda3/lib/python3.12/site-packages/resources/aws/storage/simple-storage-service-s3.png" shape=none]
+			"24c6762496544b8580edf042a55c4289" [label="processed/full/
+(Original Quality)" height=2.3 image="/Users/jrinaldo/miniconda3/lib/python3.12/site-packages/resources/aws/storage/simple-storage-service-s3.png" shape=none]
+			d805d9b74e30464c839997869910a300 [label="processed/
+thumbnail/medium/large
+(Resized JPEGs)" height=2.7 image="/Users/jrinaldo/miniconda3/lib/python3.12/site-packages/resources/aws/storage/simple-storage-service-s3.png" shape=none]
+			"178c9e05a97b407ea2517fe79c50e204" [label="metadata/
+gallery.json" height=2.3 image="/Users/jrinaldo/miniconda3/lib/python3.12/site-packages/resources/aws/storage/simple-storage-service-s3.png" shape=none]
+		}
+		"44fecc6c1fcd4133b13f58847264e51d" [label="S3 Event
+Object Created" height=2.3 image="/Users/jrinaldo/miniconda3/lib/python3.12/site-packages/resources/aws/integration/eventbridge-event.png" shape=none]
+		subgraph "cluster_Photo Processing Pipeline" {
+			graph [bgcolor="#EBF3E7" fontname="Sans-Serif" fontsize=12 label="Photo Processing Pipeline" labeljust=l pencolor="#AEB6BE" rankdir=LR shape=box style=rounded]
+			"903e1ffe38084fc3ab9c566aca89ee2c" [label="Photo Processor
+Lambda
+(2GB RAM, 3min timeout)" height=2.7 image="/Users/jrinaldo/miniconda3/lib/python3.12/site-packages/resources/aws/compute/lambda.png" shape=none]
+			subgraph "cluster_AI Services" {
+				graph [bgcolor="#ECE8F6" fontname="Sans-Serif" fontsize=12 label="AI Services" labeljust=l pencolor="#AEB6BE" rankdir=LR shape=box style=rounded]
+				"34ae0bc2ee214c2b91fa384ebcee2440" [label="AWS Bedrock
+(Claude Sonnet 3.5)
+Generate Caption" height=2.7 image="/Users/jrinaldo/miniconda3/lib/python3.12/site-packages/resources/aws/ml/bedrock.png" shape=none]
+				"5c7a9a98128143918e1c23e05eaa1c0b" [label="AWS Rekognition
+Detect Labels,
+Colors, Objects" height=2.7 image="/Users/jrinaldo/miniconda3/lib/python3.12/site-packages/resources/aws/ml/rekognition.png" shape=none]
+				"33e85d35a33148c0877d34868f6ade65" [label="AWS Location
+Service
+Reverse Geocoding
+(lat/lon → city)" height=3.1 image="/Users/jrinaldo/miniconda3/lib/python3.12/site-packages/resources/programming/language/python.png" shape=none]
+			}
+			subgraph "cluster_Processing Steps" {
+				graph [bgcolor="#ECE8F6" fontname="Sans-Serif" fontsize=12 label="Processing Steps" labeljust=l pencolor="#AEB6BE" rankdir=LR shape=box style=rounded]
+				"35e82b3fb9874d3c86bdaeb4951b6b4a" [label="Extract EXIF
+(GPS, Camera Info)" height=2.3 image="/Users/jrinaldo/miniconda3/lib/python3.12/site-packages/resources/programming/language/python.png" shape=none]
+				"4fef11af6bbe43c5ab0b308c2f61b000" [label="Resize Images
+400px, 1500px, 3000px" height=2.3 image="/Users/jrinaldo/miniconda3/lib/python3.12/site-packages/resources/programming/language/python.png" shape=none]
+			}
+		}
+		subgraph "cluster_Content Delivery" {
+			graph [bgcolor="#EBF3E7" fontname="Sans-Serif" fontsize=12 label="Content Delivery" labeljust=l pencolor="#AEB6BE" rankdir=LR shape=box style=rounded]
+			e4f7e029a40a4f3680a3c9569f14718b [label="Route 53
+DNS" height=2.3 image="/Users/jrinaldo/miniconda3/lib/python3.12/site-packages/resources/aws/network/route-53.png" shape=none]
+			"6180fec6abc24e76a3da1639196aeb2e" [label="ACM
+SSL Certificate" height=2.3 image="/Users/jrinaldo/miniconda3/lib/python3.12/site-packages/resources/aws/security/certificate-manager.png" shape=none]
+			d94b0c6474684c94918d7c4fcdce4a8e [label="CloudFront CDN
+(Static Website)" height=2.3 image="/Users/jrinaldo/miniconda3/lib/python3.12/site-packages/resources/aws/network/cloudfront.png" shape=none]
+			"25d4788f6888420a9ebdeacbbc258257" [label="Website Bucket
+HTML/CSS/JS" height=2.3 image="/Users/jrinaldo/miniconda3/lib/python3.12/site-packages/resources/aws/storage/simple-storage-service-s3.png" shape=none]
+		}
+		"6049f4feb74d4eb882881b1b3b7f472c" [label="CloudWatch
+Logs & Monitoring" height=2.3 image="/Users/jrinaldo/miniconda3/lib/python3.12/site-packages/resources/aws/management/cloudwatch.png" shape=none]
+	}
+	"71e1e6f262744700a754c8285560411d" -> "97d92b85c58248fa9213dd398de2dad3" [label="1. Upload photo
+(via S3 Console/API)" dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+	"97d92b85c58248fa9213dd398de2dad3" -> "44fecc6c1fcd4133b13f58847264e51d" [label="2. Trigger on
+ObjectCreated" dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+	"44fecc6c1fcd4133b13f58847264e51d" -> "903e1ffe38084fc3ab9c566aca89ee2c" [label="3. Invoke Lambda" dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+	"903e1ffe38084fc3ab9c566aca89ee2c" -> "97d92b85c58248fa9213dd398de2dad3" [label="4. Download
+original" dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+	"903e1ffe38084fc3ab9c566aca89ee2c" -> "35e82b3fb9874d3c86bdaeb4951b6b4a" [label="5. Extract
+GPS & EXIF" dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+	"35e82b3fb9874d3c86bdaeb4951b6b4a" -> "33e85d35a33148c0877d34868f6ade65" [label="6. Reverse
+geocode" dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+	"903e1ffe38084fc3ab9c566aca89ee2c" -> "5c7a9a98128143918e1c23e05eaa1c0b" [label="7. Detect labels,
+colors, bounding boxes" dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+	"903e1ffe38084fc3ab9c566aca89ee2c" -> "34ae0bc2ee214c2b91fa384ebcee2440" [label="8. Generate
+AI caption" dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+	"903e1ffe38084fc3ab9c566aca89ee2c" -> "4fef11af6bbe43c5ab0b308c2f61b000" [label="9. Resize to
+multiple sizes" dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+	"4fef11af6bbe43c5ab0b308c2f61b000" -> "24c6762496544b8580edf042a55c4289" [label="10. Store full
+resolution" dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+	"4fef11af6bbe43c5ab0b308c2f61b000" -> d805d9b74e30464c839997869910a300 [label="11. Store
+resized versions" dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+	"903e1ffe38084fc3ab9c566aca89ee2c" -> "178c9e05a97b407ea2517fe79c50e204" [label="12. Update metadata
+(caption, location,
+labels, colors)" dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+	"903e1ffe38084fc3ab9c566aca89ee2c" -> "97d92b85c58248fa9213dd398de2dad3" [label="13. Delete
+original" dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+	"903e1ffe38084fc3ab9c566aca89ee2c" -> "6049f4feb74d4eb882881b1b3b7f472c" [color=gray dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13 style=dashed]
+	e4f7e029a40a4f3680a3c9569f14718b -> d94b0c6474684c94918d7c4fcdce4a8e [label="DNS resolution" dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+	"6180fec6abc24e76a3da1639196aeb2e" -> d94b0c6474684c94918d7c4fcdce4a8e [label=HTTPS dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13 style=dashed]
+	d94b0c6474684c94918d7c4fcdce4a8e -> "25d4788f6888420a9ebdeacbbc258257" [label="Static assets
+(HTML/CSS/JS)" dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+	"09c6bc62c2294a5d90c2a749235fcd20" -> e4f7e029a40a4f3680a3c9569f14718b [label="1. Visit website" dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+	d94b0c6474684c94918d7c4fcdce4a8e -> "178c9e05a97b407ea2517fe79c50e204" [label="2. Fetch
+gallery.json" dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+	d94b0c6474684c94918d7c4fcdce4a8e -> d805d9b74e30464c839997869910a300 [label="3. Load
+images" dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+	d805d9b74e30464c839997869910a300 -> "09c6bc62c2294a5d90c2a749235fcd20" [label="Public Read" color=green dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13 style=dashed]
+	"178c9e05a97b407ea2517fe79c50e204" -> "09c6bc62c2294a5d90c2a749235fcd20" [label="Public Read" color=green dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13 style=dashed]
+}

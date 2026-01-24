@@ -26,68 +26,60 @@
 
         <section class="intro">
             <h2>Interactive ML Explainability Demo</h2>
-            <p>This demo uses SHAP (SHapley Additive exPlanations) to explain predictions from sentiment and toxicity classification models. Enter text below to see which words contribute most to the model's prediction.</p>
+            <p>This demo uses SHAP (SHapley Additive exPlanations) to explain predictions from NLP text classification models. You can enter text below to see which words contribute most to the model's prediction.</p>
             <p>Words highlighted in <mark style="background-color: #90ff8f;">green</mark> contribute toward the positive/neutral class, while words in <mark style="background-color: #ff8585;">red</mark> contribute toward the negative/toxic class.</p>
+            <p>This page is a spinoff of my Text Counterfactuals project. I have separated the serverless explanations for your amusement!</p>
         </section>
 
-        <div class="two-column-layout">
-            <section class="try-it">
-                <h2>Try It Out</h2>
-                <div class="form-container">
-                    <form id="explanation-form">
-                        <div class="form-group">
-                            <label for="input-text">Enter Text:</label>
-                            <input type="text" id="input-text" name="input-text" maxlength="100" placeholder="e.g., I love this amazing product!" required>
-                        </div>
+        <section class="try-it">
+            <h2>Try It Out</h2>
 
-                        <div class="form-group">
-                            <label for="model-select">Model:</label>
-                            <select id="model-select" name="model">
-                                <option value="sentiment">Sentiment Analysis</option>
-                                <option value="toxicity">Toxicity Detection</option>
-                                <option value="malicious_url">Malicious URL Detection</option>
-                                <option value="grammar_error">Grammar Error Detection</option>
-                            </select>
-                            <p class="help-text">Choose which classification model to use for analysis.</p>
-                        </div>
-
-                        <button type="submit" id="submit-btn" class="submit-btn">Generate Explanation</button>
-                    </form>
-
-                    <div id="error-message" class="error-message" style="display: none;"></div>
-                    <div id="loading-message" class="loading-message" style="display: none;">
-                        <p>Generating explanation...</p>
-                        <div class="spinner"></div>
-                    </div>
-                    <div id="results" class="results" style="display: none;"></div>
+            <div id="warmup-status" class="warmup-status" style="display: none;">
+                <div class="warmup-content">
+                    <div class="spinner"></div>
+                    <p class="warmup-message">Warming up ML endpoints...</p>
+                    <p class="warmup-submessage">This usually takes around a minute</p>
                 </div>
-            </section>
+            </div>
 
-            <section class="info">
-                <h2>How It Works</h2>
-                <p>This demo uses SHAP values to quantify each word's contribution to the model's prediction. The models are deployed as serverless endpoints on AWS SageMaker, with custom Docker containers that generate explanations in real-time.</p>
+            <div class="form-container">
+                <form id="explanation-form">
+                    <div class="form-group">
+                        <label for="input-text">Enter Text:</label>
+                        <input type="text" id="input-text" name="input-text" maxlength="100" placeholder="e.g., I love this amazing product!" required>
+                    </div>
 
-                <h3>Technical Details</h3>
-                <ul>
-                    <li><strong>Models:</strong> Fine-tuned transformer models (RoBERTa, DistilBERT) for text classification</li>
-                    <li><strong>Explainability:</strong> SHAP (SHapley Additive exPlanations) for model interpretability</li>
-                    <li><strong>Infrastructure:</strong> AWS SageMaker serverless endpoints with custom Docker containers</li>
-                    <li><strong>Frontend:</strong> Static HTML/CSS/JavaScript served via CloudFront</li>
-                </ul>
+                    <div class="form-group">
+                        <label for="model-select">Model:</label>
+                        <select id="model-select" name="model">
+                            <option value="sentiment">Sentiment Analysis</option>
+                            <option value="toxicity">Toxicity Detection</option>
+                            <option value="malicious_url">Malicious URL Detection</option>
+                            <option value="grammar_error">Grammar Error Detection</option>
+                        </select>
+                        <p class="help-text">Choose which classification model to use for analysis.</p>
+                    </div>
 
-                <h3>Learn More</h3>
-                <p>For more details about text counterfactual generation and the technical challenges involved, check out my <a href="counterfactuals.html">Text Counterfactuals blog post</a>.</p>
-            </section>
-        </div>
+                    <button type="submit" id="submit-btn" class="submit-btn">Generate Explanation</button>
+                </form>
+
+                <div id="error-message" class="error-message" style="display: none;"></div>
+                <div id="loading-message" class="loading-message" style="display: none;">
+                    <p>Generating explanation... This may take around a minute if the endpoint isn't warm</p>
+                    <div class="spinner"></div>
+                </div>
+                <div id="results" class="results" style="display: none;"></div>
+            </div>
+        </section>
     </main>
 
-    <script src="js/theme-toggle.js"></script>
+    <script src="js/theme-toggle.js?v=5"></script>
     <script src="js/config.js"></script>
     <script src="js/explanations.js"></script>
 
     <!-- particles.js scripts -->
     <script src="js/particles/particles.js"></script>
-    <script src="js/particles/app.js"></script>
+    <script src="js/particles/app.js?v=7"></script>
     </div>
 </body>
 </html>

@@ -24,21 +24,43 @@
         <main class="container">
         <h1 class="page-title">Text Counterfactuals</h1>
 
-        <section class="hero-animation">
-            <img src="images/text_counterfactual_animation.gif"
-                 alt="A diagram showing a string being converted from positive to negative sentiment by replacing the word terrible with the word wonderful"
-                 class="centered-gif">
-        </section>
-
         <section class="intro">
             <h2>About This Project</h2>
-            <p>This page documents my text counterfactuals project - a machine learning system that generates alternative text inputs to understand how models make predictions. The full implementation is available on <a href="https://github.com/JoshuaRinaldo/text_counterfactuals" target="_blank" rel="noopener noreferrer">GitHub</a>.</p>
-            <p>For a simpler interactive demo of model explanations, check out the <a href="explanations.html">Model Explanations page</a>.</p>
+            <p>This page is a reflective blog post about my text counterfactuals project.</p>
+            <p>The full implementation is available on <a href="https://github.com/JoshuaRinaldo/text_counterfactuals" target="_blank" rel="noopener noreferrer">GitHub</a>.</p>
         </section>
 
         <section class="blog-post">
             <h2>Blog Post</h2>
             <div class="blog-content">
+                    <section class="hero-animation">
+                        <div class="counterfactual-animation">
+                            <div class="prediction-line">
+                                <span class="prediction-text">Prediction: </span>
+                                <span class="prediction-value negative"></span>
+                                <svg class="prediction-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <circle class="icon-circle" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+                                    <path class="icon-sad-mouth" d="M7 15 Q12 12 17 15" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/>
+                                    <path class="icon-happy-mouth" d="M7 13 Q12 16 17 13" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none" opacity="0"/>
+                                    <circle cx="8.5" cy="9" r="1.5" fill="currentColor"/>
+                                    <circle cx="15.5" cy="9" r="1.5" fill="currentColor"/>
+                                </svg>
+                            </div>
+                            <div class="sentence-line">
+                                <span class="word light-red">I</span>
+                                <span class="word light-red">am</span>
+                                <span class="word light-grey">having</span>
+                                <span class="word light-grey">a</span>
+                                <span class="word-container">
+                                    <span class="word dark-red floating-word">terrible</span>
+                                    <span class="word mask-word">[MASK]</span>
+                                    <span class="word dark-green replacement-word">wonderful</span>
+                                </span>
+                                <span class="word light-red">day</span>
+                            </div>
+                        </div>
+                    </section>
+
                     <h3>Introduction</h3>
                     <blockquote>
                         <p><em>A counterfactual explanation describes a causal situation in the form: "If X had not occurred, Y would not have occurred." For example: "If I hadn't taken a sip of this hot coffee, I wouldn't have burned my tongue." Event Y is that I burned my tongue; cause X is that I had a hot coffee.</em></p>
@@ -86,9 +108,9 @@
     </main>
 
     <!-- particles.js scripts -->
-    <script src="js/theme-toggle.js"></script>
+    <script src="js/theme-toggle.js?v=5"></script>
     <script src="js/particles/particles.js"></script>
-    <script src="js/particles/app.js"></script>
+    <script src="js/particles/app.js?v=7"></script>
     </div>
 </body>
 </html>

@@ -11,9 +11,6 @@ from aws_cdk import (
     aws_route53 as route53,
     aws_route53_targets as targets,
     aws_apigateway as apigw,
-    aws_lambda as lambda_,
-    aws_iam as iam,
-    aws_dynamodb as dynamodb,
 )
 from .sagemaker import SagemakerHuggingface, SagemakerFromImageAndModelData
 from .lambda_ import LambdaFunctionFromDockerImage
@@ -61,7 +58,7 @@ class StaticSite(Stack):
 
         for lambda_function_n in lambda_functions:
             lambda_env_var_name = lambda_function_n["environment_variable_name"]
-            route_path = lambda_function_n.get("route_path")  # Optional
+            route_path = lambda_function_n.get("route_path")
 
             # Skip warmup and invoke_model Lambdas
             if lambda_env_var_name == "WARMUP_ENDPOINTS_LAMBDA":
@@ -134,26 +131,11 @@ class StaticSite(Stack):
             sagemaker_arns.append(endpoint_arn)
             endpoint_names[endpoint_env_var_name] = endpoint_name
 
-        # Create DynamoDB table for endpoint warmup tracking
-        warmup_table = dynamodb.Table(
-            self,
-            f"{environment}-endpoint-warmup-table",
-            table_name=f"{environment}-endpoint-warmup",
-            partition_key=dynamodb.Attribute(
-                name="endpoint_name",
-                type=dynamodb.AttributeType.STRING
-            ),
-            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
-            removal_policy=RemovalPolicy.DESTROY,
-        )
-
-        # Now create the warmup Lambda with endpoint names and DynamoDB table as env vars
+        # Create warmup lambda
         if warmup_lambda_config:
-            # Build environment variables for warmup Lambda
-            warmup_env_vars = {
-                "WARMUP_TABLE_NAME": warmup_table.table_name,
-                "WARMUP_INTERVAL_SECONDS": "300",  # 5 minutes
-            }
+
+            warmup_env_vars = {}
+
             # Add each endpoint name as an environment variable
             for env_var_name, endpoint_name in endpoint_names.items():
                 warmup_env_vars[f"{env_var_name}_ENDPOINT_NAME"] = endpoint_name
@@ -170,9 +152,6 @@ class StaticSite(Stack):
                 memory_size=512,
                 environment=warmup_env_vars,
             )
-
-            # Grant warmup Lambda read/write permissions to DynamoDB table
-            warmup_table.grant_read_write_data(warmup_lambda.lambda_function)
 
             # Add warmup Lambda to the routing map
             route_path = warmup_lambda_config.get("route_path")
@@ -218,14 +197,14 @@ class StaticSite(Stack):
             description="API for portfolio website services",
             default_cors_preflight_options=apigw.CorsOptions(
                 allow_origins=[f"https://{api_domain_name}"],  # Restrict to portfolio domain only
-                allow_methods=["POST", "OPTIONS"],  # Only POST and OPTIONS (for preflight)
+                allow_methods=["POST", "OPTIONS"],
                 allow_headers=["Content-Type", "Authorization"],
             ),
 
             # Add default throttling to prevent abuse
             deploy_options=apigw.StageOptions(
-                throttling_rate_limit=2,  # 2 requests per second max (reduced from 10)
-                throttling_burst_limit=5,  # Allow bursts up to 5 requests (reduced from 20)
+                throttling_rate_limit=2,
+                throttling_burst_limit=5,
             ),
         )
 
@@ -234,7 +213,8 @@ class StaticSite(Stack):
             # Create Lambda integration
             lambda_integration = apigw.LambdaIntegration(
                 lambda_func,
-                proxy=True,
+                proxy=True, 
+                timeout=Duration.seconds(90)
             )
 
             # Add API resource and method
@@ -320,8 +300,8 @@ class StaticSite(Stack):
 
         # Build API endpoint URLs manually using the API ID
         # This avoids CDK token resolution issues
-        api_endpoint = f"https://{api.rest_api_id}.execute-api.{region}.amazonaws.com/prod/invoke"
-        warmup_endpoint = f"https://{api.rest_api_id}.execute-api.{region}.amazonaws.com/prod/warmup"
+        api_endpoint = f"https://{api.rest_api_id}.execute-api.{region}.amazonaws.com/{environment}/invoke"
+        warmup_endpoint = f"https://{api.rest_api_id}.execute-api.{region}.amazonaws.com/{environment}/warmup"
 
         # Generate config.js content
         config_js_content = f"""// Configuration generated during CDK deployment

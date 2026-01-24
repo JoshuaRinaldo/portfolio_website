@@ -50,6 +50,10 @@ class PhotoGalleryStack(Stack):
         environment = self.node.try_get_context("environment")
         region = self.node.try_get_context("region")
         photo_bucket_exists = self.node.try_get_context("photo_bucket_exists") or False
+        domain_name = self.node.try_get_context("domain_name")
+
+        if environment != "prod":
+            domain_name = f"{environment}.{domain_name}"
 
         bucket_name = f"{environment}-photo-gallery"
 
@@ -72,8 +76,9 @@ class PhotoGalleryStack(Stack):
             cors=[
                 s3.CorsRule(
                     allowed_methods=[s3.HttpMethods.GET, s3.HttpMethods.HEAD],
-                    allowed_origins=["*"],  # Restrict to your domain in production
+                    allowed_origins=[f"https://{domain_name}", "http://localhost:8000", "http://127.0.0.1:8000"],
                     allowed_headers=["*"],
+                    exposed_headers=["ETag", "Content-Length", "Content-Type"],
                     max_age=3600
                 )
             ],

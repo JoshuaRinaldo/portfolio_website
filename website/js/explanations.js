@@ -8,23 +8,79 @@ console.log('Config loaded:', {
     ENDPOINT_NAMES
 });
 
-// Warmup endpoints on page load
-function warmupEndpoints() {
-    // Fire-and-forget async request to warmup endpoint
-    // Don't wait for response or handle errors - we want this to be non-blocking
-    fetch(WARMUP_ENDPOINT, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
+// Warmup endpoints on page load with retry logic
+async function warmupEndpoints() {
+    const maxAttempts = 5;
+    const timeoutMs = 15000; // 15 seconds per attempt
+    const delayBetweenAttempts = 2000; // 2 seconds between retries
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        console.log(`Warmup attempt ${attempt}/${maxAttempts}`);
+
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+            const response = await fetch(WARMUP_ENDPOINT, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                signal: controller.signal
+            });
+
+            clearTimeout(timeoutId);
+
+            if (response.ok) {
+                const data = await response.json();
+                console.log('Warmup successful:', data);
+                return true; // Success!
+            }
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                console.log(`Warmup attempt ${attempt} timed out (this is expected for cold endpoints)`);
+            } else {
+                console.log(`Warmup attempt ${attempt} failed:`, error.message);
+            }
         }
-    }).catch(() => {
-        // Silently ignore errors - warmup is a best-effort optimization
-        console.log('Warmup request sent (response not awaited)');
-    });
+
+        // Wait before next attempt (unless this was the last attempt)
+        if (attempt < maxAttempts) {
+            await new Promise(resolve => setTimeout(resolve, delayBetweenAttempts));
+        }
+    }
+
+    console.log('Warmup failed after all attempts');
+    return false; // Failed after all attempts
+}
+
+// Initialize warmup status UI and start warmup process on page load
+async function initializeWarmupProcess() {
+    const formContainer = document.querySelector('.form-container');
+    const warmupStatus = document.getElementById('warmup-status');
+
+    // Show warming message, hide form
+    warmupStatus.style.display = 'block';
+    formContainer.style.display = 'none';
+
+    // Start warmup
+    const success = await warmupEndpoints();
+
+    if (success) {
+        // Endpoints are warm, show form
+        warmupStatus.style.display = 'none';
+        formContainer.style.display = 'block';
+    } else {
+        // Warmup failed, but let user try anyway with a warning
+        warmupStatus.innerHTML = `
+            <p class="warmup-warning">⚠️ Endpoints may still be warming up. First request might take longer than usual.</p>
+        `;
+        formContainer.style.display = 'block';
+    }
 }
 
 // Call warmup when page loads
-warmupEndpoints();
+initializeWarmupProcess();
 
 // Get DOM elements
 const form = document.getElementById('explanation-form');
@@ -114,7 +170,9 @@ form.addEventListener('submit', async (e) => {
     } catch (error) {
         console.error('Error details:', error);
         console.error('Error stack:', error.stack);
-        showError('An error occurred while generating explanations. Please try again later.');
+        showError(
+            'An error occurred while generating explanations. Sometimes the endpoint with time out if it is not warm. Try again in ~30 seconds.'
+        );
     } finally {
         loadingMessage.style.display = 'none';
         submitBtn.disabled = false;
@@ -137,6 +195,11 @@ function createHexCss(explanation, desiredLabel, undesiredLabel) {
         const token = tokenExplanation[0];
         const shapleyValues = tokenExplanation[1];
 
+        // Skip empty strings
+        if (token === '') {
+            continue;
+        }
+
         // Collapse shapley values to simplify coloring
         const collapsedValue = shapleyValues[desiredLabel] - shapleyValues[undesiredLabel];
         const colorIndex = Math.min(Math.floor(Math.abs(collapsedValue) * 20), 7);
@@ -150,7 +213,7 @@ function createHexCss(explanation, desiredLabel, undesiredLabel) {
             color = 'fcfcfc';
         }
 
-        outputStr += `<mark style="background-color: #${color};\">${escapeHtml(token)}</mark>`;
+        outputStr += `<mark style="background-color: #${color};">${escapeHtml(token)}</mark>`;
     }
 
     return outputStr;
@@ -202,7 +265,7 @@ function displayResults(endpointResponse, modelType) {
             <div class="explanation">
                 ${explanationHtml}
             </div>
-            <p style="text-align: center; font-size: 0.9rem; color: #666; margin-top: 1rem;">
+            <p class="help-text", style="text-align: center; font-size: 0.9rem; margin-top: 1rem;">
                 (green indicates a contribution towards ${desiredLabel},
                 red indicates a contribution towards ${undesiredLabel})
             </p>

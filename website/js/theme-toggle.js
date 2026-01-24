@@ -122,7 +122,14 @@
             </svg>
         `;
         toggle.addEventListener('click', toggleTheme);
-        document.body.appendChild(toggle);
+
+        // Append to navbar container, or fallback to body if navbar doesn't exist
+        const navbarContainer = document.querySelector('.navbar .container');
+        if (navbarContainer) {
+            navbarContainer.appendChild(toggle);
+        } else {
+            document.body.appendChild(toggle);
+        }
 
         // Set the theme
         const theme = getThemePreference();
@@ -143,6 +150,9 @@
     const initialTheme = getThemePreference();
     if (initialTheme === 'dark') {
         document.documentElement.setAttribute('data-theme', 'dark');
+    } else {
+        // IMPORTANT: Remove dark theme attribute if light mode
+        document.documentElement.removeAttribute('data-theme');
     }
 
     // Expose setTheme globally so particles can call it if needed

@@ -11,11 +11,30 @@ let lightbox = null;
 let filteredPhotos = [];
 let activeSearchMode = null; // 'color', 'label', or null
 let selectedLabels = new Set(); // Track selected labels for multiselect
+let colorSelected = false; // Track if user has selected a color
 
 // Elements
 const photoGrid = document.getElementById('photo-grid');
 const loadingSpinner = document.getElementById('loading');
 const loadMoreTrigger = document.getElementById('load-more-trigger');
+
+// Gallery Info Expander
+const galleryInfoToggle = document.getElementById('gallery-info-toggle');
+const galleryInfoContent = document.getElementById('gallery-info-content');
+
+if (galleryInfoToggle && galleryInfoContent) {
+    galleryInfoToggle.addEventListener('click', () => {
+        const isExpanded = galleryInfoToggle.getAttribute('aria-expanded') === 'true';
+
+        if (isExpanded) {
+            galleryInfoToggle.setAttribute('aria-expanded', 'false');
+            galleryInfoContent.classList.remove('expanded');
+        } else {
+            galleryInfoToggle.setAttribute('aria-expanded', 'true');
+            galleryInfoContent.classList.add('expanded');
+        }
+    });
+}
 
 // Fetch gallery data
 async function fetchGalleryData() {
@@ -108,15 +127,34 @@ function hexToRgb(hex) {
     } : null;
 }
 
-// Calculate Euclidean distance between two RGB colors
+// Calculate perceptually-weighted color distance between two RGB colors
+// Uses weighted Euclidean distance that better matches human perception
+// Returns a value from 0 (identical) to higher values (more different)
 function colorDistance(rgb1, rgb2) {
+    // Calculate luminance (perceived brightness) using standard weights
+    // Humans perceive green as brightest, then red, then blue
+    const lum1 = 0.299 * rgb1.r + 0.587 * rgb1.g + 0.114 * rgb1.b;
+    const lum2 = 0.299 * rgb2.r + 0.587 * rgb2.g + 0.114 * rgb2.b;
+    const lumDiff = Math.abs(lum1 - lum2);
+
+    // Calculate chroma (color) difference using weighted RGB
     const rDiff = rgb1.r - rgb2.r;
     const gDiff = rgb1.g - rgb2.g;
     const bDiff = rgb1.b - rgb2.b;
-    return Math.sqrt(rDiff * rDiff + gDiff * gDiff + bDiff * bDiff);
+
+    // Weighted Euclidean distance (redmean approximation)
+    const rMean = (rgb1.r + rgb2.r) / 2;
+    const r = rDiff * rDiff * (2 + rMean / 256);
+    const g = gDiff * gDiff * 4;
+    const b = bDiff * bDiff * (2 + (255 - rMean) / 256);
+    const chromaDistance = Math.sqrt(r + g + b);
+
+    // Combine luminance and chroma with extra weight on luminance
+    // This prevents dark blue from matching black, light blue from matching white, etc.
+    // Weight luminance more heavily (3x) to prevent brightness mismatches
+    return chromaDistance + (lumDiff * 3);
 }
 
-// Calculate composite color score for a photo
 function calculateColorScore(photo, targetHex) {
     if (!photo.rekognition || !photo.rekognition.dominant_colors || photo.rekognition.dominant_colors.length === 0) {
         return Infinity; // Photos without color data go to the end
@@ -125,27 +163,38 @@ function calculateColorScore(photo, targetHex) {
     const targetRgb = hexToRgb(targetHex);
     if (!targetRgb) return Infinity;
 
-    // Get top 3 dominant colors
-    const dominantColors = photo.rekognition.dominant_colors.slice(0, 3);
+    // Distance threshold: colors beyond this are considered "not a match"
+    // 150 is roughly the perceptual distance between fairly different colors
+    const MAX_DISTANCE = 200;
+
+    // Get top 5 dominant colors (look at more colors for better matching)
+    const dominantColors = photo.rekognition.dominant_colors.slice(0, 5);
 
     // Calculate weighted score for each color
-    // Score = distance / (pixel_percentage / 100)
     // Lower score is better (closer color + higher percentage)
     const scores = dominantColors.map(color => {
         const colorRgb = hexToRgb(color.hex);
         if (!colorRgb) return Infinity;
 
         const distance = colorDistance(targetRgb, colorRgb);
-        const percentage = parseFloat(color.pixel_percentage) / 100 + 1;
 
-        return distance / percentage;
+        // Only include reasonably distance images
+        if (distance > MAX_DISTANCE) {
+            return Infinity;
+        }
+
+        const percentage = parseFloat(color.pixel_percentage);
+
+        return (distance * distance + 10) / percentage;
     });
 
-    // Return the best (lowest) score
-    return Math.min(...scores);
+    // Return the best (lowest) score from all dominant colors
+    const bestScore = Math.min(...scores);
+
+    // If no colors matched (all beyond threshold), return Infinity
+    return bestScore;
 }
 
-// Unified search: filter by labels, then sort by color
 function performSearch() {
     const colorPicker = document.getElementById('color-picker');
     const hexColor = colorPicker ? colorPicker.value : '#ffffff';
@@ -164,22 +213,28 @@ function performSearch() {
         photosToSearch = allPhotos;
     }
 
-    // Step 2: Sort by color similarity
-    const photosWithScores = photosToSearch.map(photo => ({
-        photo,
-        score: calculateColorScore(photo, hexColor)
-    }));
+    if (colorSelected) {
+        const photosWithScores = photosToSearch.map(photo => ({
+            photo,
+            score: calculateColorScore(photo, hexColor)
+        }));
 
-    // Sort by score (lower is better)
-    photosWithScores.sort((a, b) => a.score - b.score);
+        // Filter out photos that didn't match (score = Infinity)
+        const matchedPhotos = photosWithScores.filter(item => item.score !== Infinity);
 
-    // Extract sorted photos
-    filteredPhotos = photosWithScores.map(item => item.photo);
+        // Sort by score (lower is better)
+        matchedPhotos.sort((a, b) => a.score - b.score);
 
-    if (filteredPhotos.length > 0) {
-        activeSearchMode = 'active';
+        // Extract sorted photos
+        filteredPhotos = matchedPhotos.map(item => item.photo);
     } else {
-        activeSearchMode = null;
+        // No color filter, use label-filtered photos as-is
+        filteredPhotos = photosToSearch;
+    }
+
+    // Set active search mode if either labels or color is selected
+    if (selectedLabels.size > 0 || colorSelected) {
+        activeSearchMode = 'active';
     }
 
     // Reset and reload gallery
@@ -220,6 +275,7 @@ function resetSearch() {
     activeSearchMode = null;
     filteredPhotos = [];
     selectedLabels.clear();
+    colorSelected = false;
 
     // Clear all checkboxes
     document.querySelectorAll('#label-options input[type="checkbox"]').forEach(checkbox => {
@@ -247,6 +303,13 @@ function resetGallery() {
 function loadMorePhotos() {
     // Use filtered photos if search is active, otherwise use all photos
     const photosToDisplay = activeSearchMode ? filteredPhotos : allPhotos;
+
+    // Show "no results" message if search is active but no photos match
+    if (activeSearchMode && photosToDisplay.length === 0 && currentIndex === 0) {
+        loadingSpinner.style.display = 'none';
+        photoGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 2rem; color: var(--text-color);"><p>No photos match your search criteria. Try a different color or adjust your filters.</p></div>';
+        return;
+    }
 
     if (isLoading || currentIndex >= photosToDisplay.length) {
         loadingSpinner.style.display = 'none';
@@ -279,6 +342,7 @@ function loadMorePhotos() {
             // Wait for GLightbox to fully initialize the slide
             setTimeout(() => {
                 updateInfoPanel();
+                updateDownloadMenu();
             }, 100);
         },
         onClose: () => {
@@ -288,9 +352,10 @@ function loadMorePhotos() {
 
     // Add event listener for slide changes using GLightbox's event system
     lightbox.on('slide_changed', () => {
-        console.log('Slide changed, updating info panel...');
+        console.log('Slide changed, updating info panel and download menu...');
         setTimeout(() => {
             updateInfoPanel();
+            updateDownloadMenu();
         }, 100);
     });
 
@@ -307,6 +372,19 @@ function createInfoPanel() {
     infoButton.onclick = toggleInfoPanel;
     document.body.appendChild(infoButton);
 
+    // Create download button
+    const downloadButton = document.createElement('div');
+    downloadButton.className = 'gdownload-button';
+    downloadButton.innerHTML = '↓';
+    downloadButton.onclick = toggleDownloadMenu;
+    document.body.appendChild(downloadButton);
+
+    // Create download menu
+    const downloadMenu = document.createElement('div');
+    downloadMenu.className = 'gdownload-menu';
+    downloadMenu.id = 'photo-download-menu';
+    document.body.appendChild(downloadMenu);
+
     // Create info panel
     const infoPanel = document.createElement('div');
     infoPanel.className = 'ginfo-panel';
@@ -314,21 +392,186 @@ function createInfoPanel() {
     document.body.appendChild(infoPanel);
 
     updateInfoPanel();
+    updateDownloadMenu();
 }
 
-// Remove info panel
+// Remove info panel and download menu
 function removeInfoPanel() {
-    const button = document.querySelector('.ginfo-button');
+    const infoButton = document.querySelector('.ginfo-button');
+    const downloadButton = document.querySelector('.gdownload-button');
+    const downloadMenu = document.getElementById('photo-download-menu');
     const panel = document.getElementById('photo-info-panel');
-    if (button) button.remove();
+    if (infoButton) infoButton.remove();
+    if (downloadButton) downloadButton.remove();
+    if (downloadMenu) downloadMenu.remove();
     if (panel) panel.remove();
 }
 
 // Toggle info panel
 function toggleInfoPanel() {
     const panel = document.getElementById('photo-info-panel');
+    const downloadMenu = document.getElementById('photo-download-menu');
+
     if (panel) {
         panel.classList.toggle('active');
+    }
+
+    // Close download menu if open
+    if (downloadMenu && downloadMenu.classList.contains('active')) {
+        downloadMenu.classList.remove('active');
+    }
+}
+
+// Toggle download menu
+function toggleDownloadMenu() {
+    const downloadMenu = document.getElementById('photo-download-menu');
+    const panel = document.getElementById('photo-info-panel');
+
+    if (downloadMenu) {
+        downloadMenu.classList.toggle('active');
+    }
+
+    // Close info panel if open
+    if (panel && panel.classList.contains('active')) {
+        panel.classList.remove('active');
+    }
+}
+
+// Format dimensions for display
+function formatDimensions(width, height) {
+    if (!width || !height) return '';
+    return `${width} × ${height}`;
+}
+
+// Update download menu content
+async function updateDownloadMenu() {
+    const menu = document.getElementById('photo-download-menu');
+    if (!menu) return;
+
+    // Get current slide
+    const currentSlide = document.querySelector('.gslide.current');
+    if (!currentSlide) return;
+
+    const slideContainer = currentSlide.querySelector('.gslide-media');
+    if (!slideContainer) return;
+
+    const slideImage = slideContainer.querySelector('img');
+    if (!slideImage) return;
+
+    // Get photo data using the same matching logic
+    const imageSrc = slideImage.src;
+    let imagePath = imageSrc;
+    try {
+        const url = new URL(imageSrc);
+        imagePath = url.pathname;
+    } catch (e) {
+        // Use full src if URL parsing fails
+    }
+
+    const photoCard = Array.from(document.querySelectorAll('.photo-card')).find(card => {
+        const cardData = JSON.parse(card.getAttribute('data-photo-info'));
+        const largePath = cardData.images.large;
+        return imagePath.includes(largePath) || card.href === imageSrc;
+    });
+
+    if (!photoCard) {
+        menu.innerHTML = '<div class="download-error">Unable to load download options</div>';
+        return;
+    }
+
+    const photoData = JSON.parse(photoCard.getAttribute('data-photo-info'));
+    const baseUrl = 'https://prod-photo-gallery.s3.us-east-1.amazonaws.com';
+
+    // Define download options (medium -> small for display)
+    const downloadOptions = [
+        { label: 'Small', key: 'medium', path: photoData.images.medium },
+        { label: 'Large', key: 'large', path: photoData.images.large },
+        { label: 'Full', key: 'full', path: photoData.images.full }
+    ];
+
+    // Build options with dimensions from metadata
+    const optionsWithDimensions = downloadOptions.map(option => {
+        const fullUrl = `${baseUrl}/${option.path}`;
+        const dims = photoData.dimensions?.[option.key];
+        const dimensionStr = dims ? formatDimensions(dims.width, dims.height) : 'Unknown size';
+        return { ...option, dimensions: dimensionStr, url: fullUrl };
+    });
+
+    // Build menu HTML
+    let html = '<div class="download-menu-header">Download Image</div>';
+    html += '<div class="download-options">';
+
+    optionsWithDimensions.forEach(option => {
+        html += `
+            <div class="download-option" onclick="downloadImage('${option.url}', '${photoData.title}_${option.label}.jpg')">
+                <span class="download-label">${option.label}</span>
+                <span class="download-size">${option.dimensions}</span>
+            </div>
+        `;
+    });
+
+    html += '</div>';
+    menu.innerHTML = html;
+}
+
+// Download image
+async function downloadImage(url, filename) {
+    try {
+        // Show a loading indicator
+        const downloadMenu = document.getElementById('photo-download-menu');
+        if (downloadMenu) {
+            const originalContent = downloadMenu.innerHTML;
+            downloadMenu.innerHTML = '<div class="download-loading">Preparing download...</div>';
+
+            // Fetch the image with explicit CORS mode
+            const response = await fetch(url, {
+                method: 'GET',
+                mode: 'cors',  // Explicitly request CORS
+                credentials: 'omit',  // Don't send credentials
+                cache: 'no-cache'  // Bypass cache to ensure fresh CORS headers
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const blob = await response.blob();
+
+            // Create a blob URL and trigger download
+            const blobUrl = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = blobUrl;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            // Clean up the blob URL
+            window.URL.revokeObjectURL(blobUrl);
+
+            // Restore menu and close it
+            downloadMenu.innerHTML = originalContent;
+            downloadMenu.classList.remove('active');
+        }
+    } catch (error) {
+        console.error('Error downloading image:', error);
+        console.error('Error details:', {
+            message: error.message,
+            stack: error.stack,
+            url: url
+        });
+
+        const downloadMenu = document.getElementById('photo-download-menu');
+        if (downloadMenu) {
+            downloadMenu.innerHTML = `
+                <div class="download-error">
+                    <p>Download failed. Check console for details.</p>
+                    <p style="font-size: 0.8em; color: #666;">${error.message}</p>
+                </div>
+            `;
+        }
+
+        alert('Failed to download image. Please check the browser console for details.');
     }
 }
 
@@ -671,8 +914,13 @@ function renderBoundingBoxes() {
         const labelWidth = labelText.length * 8 + 16;
         const labelHeight = 24;
 
+        // Determine label position: above box if there's room, otherwise inside at top
+        const labelAboveBox = y - labelHeight >= offsetY;
+        const labelY = labelAboveBox ? y - labelHeight : y;
+        const textY = labelAboveBox ? y - 7 : y + 17;
+
         labelBg.setAttribute('x', x);
-        labelBg.setAttribute('y', y - labelHeight);
+        labelBg.setAttribute('y', labelY);
         labelBg.setAttribute('width', labelWidth);
         labelBg.setAttribute('height', labelHeight);
         labelBg.setAttribute('class', 'bbox-label-bg');
@@ -682,7 +930,7 @@ function renderBoundingBoxes() {
         // Create label text
         const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
         text.setAttribute('x', x + 8);
-        text.setAttribute('y', y - 7);
+        text.setAttribute('y', textY);
         text.setAttribute('class', 'bbox-label-text');
         text.style.fill = '#000';
         text.style.fontSize = '14px';
@@ -715,6 +963,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const labelDisplay = document.getElementById('label-display');
     const labelOptions = document.getElementById('label-options');
     const resetBtn = document.getElementById('reset-btn');
+
+    // Track when user changes color
+    colorPicker.addEventListener('input', () => {
+        colorSelected = true;
+    });
 
     // Unified search button
     searchBtn.addEventListener('click', () => {

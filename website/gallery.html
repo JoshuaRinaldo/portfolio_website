@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/glightbox/dist/css/glightbox.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/theme-toggles@4.10.1/css/classic.min.css">
     <link rel="stylesheet" href="css/style.css">
-    <script src="js/theme-toggle.js"></script>
+    <script src="js/theme-toggle.js?v=5"></script>
 </head>
 <body>
     <nav class="navbar">
@@ -22,8 +22,38 @@
     <main class="gallery-page">
         <header class="page-header">
             <h1 class="page-title">Photo Gallery</h1>
-            <p class="page-description">A collection of photos</p>
         </header>
+
+        <section class="intro">
+        <p class="intro">My Photo Gallery</p>
+        <p class="intro">This is a place for people to view and download photos I take. Please feel free to use my photos however you like, they are not watermarked and do not have a license.</p>
+        <p class="intro">I have added some fun AI/ML features to my gallery. Click on the info button that appears when viewing an image to see automatically generated captions, labels, dominant colors, and object bounding boxes. I used existing services and out-of-the-box models, I did not build or finetune these models. They aren't always perfect, and it can be fun and interesting to see where they go wrong.</p>
+        <p class="intro">Check out the "About this gallery" expander for an architecture diagram.</p>
+    </section>
+
+        <div class="gallery-info-expander">
+            <button class="expander-toggle" id="gallery-info-toggle" aria-expanded="false">
+                <span class="expander-icon">▼</span>
+                <span class="expander-title">About This Gallery</span>
+            </button>
+            <div class="expander-content" id="gallery-info-content">
+                <div class="expander-inner">
+                    <h2>Architecture Diagram</h2>
+                    <div class="architecture-diagram">
+                        <img src="images/photo_gallery.png" alt="Photo Gallery Architecture Diagram">
+                    </div>
+                    <h2>Some Thoughts</h2>
+                    <div class="gallery-description">
+                        <p>I wanted a place where I could direct people to see and download pictures I have taken, and I also wanted to have a connected platform and storage solution that I had control over. I was in the middle of rebuilding my personal site, and I thought hey, this sounds like a fun project!</p>
+                        <p>And it was. There are so many angles to take with this gallery that I think I will be continuing to build on top of it as my needs change and grow.</p>
+                        <p>The first task was actually designing the pipeline. It would be best if I could upload an image and everything "just worked". Lambda was a perfect fit, because we could trigger a lambda function whenever an image is uploaded to S3, then we can use that lambda function to tie everything else together. The lambda function handles more basic stuff, like resizing the images, extracting EXIF data, compiling metadata, and invoking external endpoints for capabilities that are outside of the scope of a lambda function.</p>
+                        <p>At first, I just thought it would be fun to run object/label detection on my photos to see what would be picked up. AWS makes this easy with Rekognition. While using Rekognition, I noticed that it also provides this interesting "dominant colors" feature. This made me think that it would be cool to store these colors and show them to the user when viewing a specific image. But what would be even cooler would be to implement a search by color feature!</p>
+                        <p>Search by color turned out to be an unexpected rabbit hole. Looking back on it, I should have known better than to think it would be easy. The way that we perceive color is different than how we represent it, and bridging that gap is tricky. After starting with a very simple RBG euclidean distance calculation, I quickly found that the color search had a preference for blacks that dominate the image. After reading some theory and doing some experimenting, I eventually settled on sticking with euclidean distance, but instead weighting colors and luminance differently to better align with how humans perceive color. However, there are more complex algorithms like <a href="https://hajim.rochester.edu/ece/sites/gsharma/papers/CIEDE2000CRNAFeb05.pdf" target="_blank">CIEDE2000</a>. Settled is a key word here, it still doesn't work perfectly. But I thought it was necessary to strike a balance between simplicity and accuracy.</p>
+                        <p>Overall, it was a lot of fun to make this, and I am continuing to come up with ideas for it faster than I can implement them. I will certainly come back to this gallery and keep working on it.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <div class="search-controls">
             <div class="search-group">

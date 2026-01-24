@@ -64,7 +64,7 @@ def resize_image(image_bytes, max_dimension):
         max_dimension: Maximum width or height
 
     Returns:
-        tuple: (BytesIO of resized JPEG, PIL.Image object)
+        tuple: (BytesIO of resized JPEG, PIL.Image object, (width, height))
     """
     img = Image.open(BytesIO(image_bytes))
 
@@ -96,7 +96,7 @@ def resize_image(image_bytes, max_dimension):
     resized_img.save(output, format='JPEG', quality=95, optimize=True)
     output.seek(0)
 
-    return output, resized_img
+    return output, resized_img, (new_width, new_height)
 
 
 def detect_labels_rekognition(bucket: str, image_key: str) -> Dict:
@@ -329,7 +329,7 @@ def generate_caption_bedrock(pil_image: Image.Image) -> str:
                         },
                         {
                             "type": "text",
-                            "text": "Please provide a short caption for this photo. The caption should be descriptive but it should not be embellished."
+                            "text": "Please provide a short caption for this photo. The caption should just describe the scene plainly. Please only return the caption and no other text."
                         }
                     ]
                 }
@@ -454,11 +454,17 @@ def handler(event, context):
 
             # Process and upload resized versions
             processed_keys = {'full': full_key}
+            image_dimensions = {}  # Store dimensions for each size
             large_pil_image = None  # Store large image for captioning
+
+            # Get full image dimensions
+            full_img = Image.open(BytesIO(original_bytes))
+            full_img = ImageOps.exif_transpose(full_img)
+            image_dimensions['full'] = {'width': full_img.width, 'height': full_img.height}
 
             for size_name, max_dim in SIZES.items():
                 # Resize image
-                resized_bytes, pil_img = resize_image(original_bytes, max_dim)
+                resized_bytes, pil_img, dimensions = resize_image(original_bytes, max_dim)
 
                 # Upload to processed folder
                 processed_key = f"processed/{size_name}/{name}.jpg"
@@ -471,7 +477,8 @@ def handler(event, context):
                 )
 
                 processed_keys[size_name] = processed_key
-                logger.info(f"Uploaded {size_name}: {processed_key}")
+                image_dimensions[size_name] = {'width': dimensions[0], 'height': dimensions[1]}
+                logger.info(f"Uploaded {size_name}: {processed_key} ({dimensions[0]}x{dimensions[1]})")
 
                 # Store large image for caption generation
                 if size_name == 'large':
@@ -550,6 +557,7 @@ def handler(event, context):
                     'large': processed_keys['large'],
                     'full': processed_keys['full']
                 },
+                'dimensions': image_dimensions,
                 "exif_info": exif_info,
                 'rekognition': rekognition_data
             }
